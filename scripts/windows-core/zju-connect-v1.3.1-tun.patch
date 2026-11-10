@@ -1,0 +1,579 @@
+diff --git a/main.go b/main.go
+--- a/main.go
++++ b/main.go
+@@ -295,23 +295,26 @@
+ 			log.Fatalf("TCP Tunnel stack setup error: %s", err)
+ 		}
+ 	} else if conf.TUNMode {
+-		vpnTUNStack, err := tun.NewStack(vpnClient, conf.DNSHijack, conf.FakeIP, ipResources)
+-		if err != nil {
+-			log.Fatalf("Tun stack setup error, make sure you are root user : %s", err)
+-		}
+-
++		var routes []string
+ 		if conf.AddRoute && ipSet != nil {
+ 			for _, prefix := range ipSet.Prefixes() {
+-				log.Printf("Add route to %s", prefix.String())
+-				_ = vpnTUNStack.AddRoute(prefix.String())
++				routes = append(routes, prefix.String())
+ 			}
+ 		} else if !conf.AddRoute && !conf.DisableZJUConfig && conf.Protocol == "easyconnect" {
+-			log.Println("Add route to 10.0.0.0/8")
+-			_ = vpnTUNStack.AddRoute("10.0.0.0/8")
+-		}
+-
++			routes = append(routes, "10.0.0.0/8")
++		}
+ 		if conf.FakeIP {
+-			_ = vpnTUNStack.AddRoute("198.18.0.0/16")
++			routes = append(routes, "198.18.0.0/16")
++		}
++		vpnTUNStack, err := tun.NewStack(vpnClient, conf.DNSHijack, conf.FakeIP, ipResources, routes...)
++		if err != nil {
++			log.Fatalf("Tun stack setup error : %s", err)
++		}
++		if runtime.GOOS != "windows" {
++			for _, route := range routes {
++				log.Printf("Add route to %s", route)
++				_ = vpnTUNStack.AddRoute(route)
++			}
+ 		}
+ 
+ 		vpnStack = vpnTUNStack
+diff --git a/stack/tun/stack_android.go b/stack/tun/stack_android.go
+--- a/stack/tun/stack_android.go
++++ b/stack/tun/stack_android.go
+@@ -108,7 +108,7 @@
+ 
+ func (s *Stack) SetupIPPool(*ippool.IPPool[[]client.DomainResource]) {}
+ 
+-func NewStack(client client.Client, _ bool, _ bool, _ []client.IPResource) (*Stack, error) {
++func NewStack(client client.Client, _ bool, _ bool, _ []client.IPResource, _ ...string) (*Stack, error) {
+ 	s := &Stack{}
+ 
+ 	s.endpoint = &Endpoint{
+diff --git a/stack/tun/stack_darwin.go b/stack/tun/stack_darwin.go
+--- a/stack/tun/stack_darwin.go
++++ b/stack/tun/stack_darwin.go
+@@ -86,7 +86,7 @@
+ 	return nil
+ }
+ 
+-func NewStack(vpnClient client.Client, dnsHijack, fakeIP bool, ipResources []client.IPResource) (*Stack, error) {
++func NewStack(vpnClient client.Client, dnsHijack, fakeIP bool, ipResources []client.IPResource, _ ...string) (*Stack, error) {
+ 	var err error
+ 	s := &Stack{}
+ 	s.ipResources = ipResources
+diff --git a/stack/tun/stack_linux.go b/stack/tun/stack_linux.go
+--- a/stack/tun/stack_linux.go
++++ b/stack/tun/stack_linux.go
+@@ -57,7 +57,7 @@
+ 	return nil
+ }
+ 
+-func NewStack(vpnClient client.Client, dnsHijack, fakeIP bool, ipResources []client.IPResource) (*Stack, error) {
++func NewStack(vpnClient client.Client, dnsHijack, fakeIP bool, ipResources []client.IPResource, _ ...string) (*Stack, error) {
+ 	var err error
+ 	s := &Stack{}
+ 	s.ipResources = ipResources
+diff --git a/stack/tun/stack_windows.go b/stack/tun/stack_windows.go
+--- a/stack/tun/stack_windows.go
++++ b/stack/tun/stack_windows.go
+@@ -5,7 +5,8 @@
+ 	"fmt"
+ 	"net"
+ 	"net/netip"
+-	"os/exec"
++	"os"
++	"strings"
+ 	"sync"
+ 
+ 	"github.com/mythologyli/zju-connect/client"
+@@ -16,16 +17,19 @@
+ 	"golang.zx2c4.com/wireguard/windows/tunnel/winipcfg"
+ )
+ 
+-const guid = "{4F5CDE94-D2A3-4AA5-A4A3-0FE6CB909E83}"
+-const interfaceName = "ZJU Connect"
++const legacyGUID = "{4F5CDE94-D2A3-4AA5-A4A3-0FE6CB909E83}"
++const legacyInterfaceName = "ZJU Connect"
++const adapterPrefix = "EZ4Connectpro-"
+ 
+ type Endpoint struct {
+ 	client client.Client
+ 
+-	dev       tun.Device
+-	readLock  sync.Mutex
+-	writeLock sync.Mutex
+-	ip        net.IP
++	dev            tun.Device
++	readLock       sync.Mutex
++	writeLock      sync.Mutex
++	ip             net.IP
++	link           winipcfg.LUID
++	interfaceIndex uint32
+ }
+ 
+ func (ep *Endpoint) Write(buf []byte) error {
+@@ -59,101 +63,124 @@
+ }
+ 
+ func (s *Stack) AddRoute(target string) error {
+-	ipaddr, ipv4Net, err := net.ParseCIDR(target)
++	prefix, err := netip.ParsePrefix(target)
+ 	if err != nil {
+ 		return err
+ 	}
++	if !prefix.Addr().Is4() {
++		return fmt.Errorf("not an IPv4 route: %s", target)
++	}
++	return s.endpoint.link.AddRoute(prefix.Masked(), netip.IPv4Unspecified(), 1)
++}
+ 
+-	ip := ipaddr.To4()
+-	if ip == nil {
+-		return fmt.Errorf("not a valid IPv4 address")
++func NewStack(vpnClient client.Client, dnsHijack, fakeIP bool, ipResources []client.IPResource, routeTargets ...string) (*Stack, error) {
++	guidText := os.Getenv("EZ4CONNECTPRO_TUN_GUID")
++	adapterName := legacyInterfaceName
++	if guidText == "" {
++		guidText = legacyGUID
++	}
++	guid, err := windows.GUIDFromString(guidText)
++	if err != nil {
++		return nil, fmt.Errorf("invalid TUN adapter identity: %w", err)
++	}
++	if !strings.EqualFold(guidText, legacyGUID) {
++		adapterName = adapterPrefix + strings.ToLower(strings.Trim(guid.String(), "{}"))
+ 	}
+ 
+-	command := exec.Command("route", "add", ip.String(), "mask", net.IP(ipv4Net.Mask).String(), s.endpoint.ip.String(), "metric", "1")
+-	err = command.Run()
++	clientIP, err := vpnClient.IP()
+ 	if err != nil {
+-		return err
++		return nil, err
+ 	}
+-
+-	return nil
+-}
+-
+-func NewStack(client client.Client, dnsHijack, fakeIP bool, ipResources []client.IPResource) (*Stack, error) {
+-	s := &Stack{}
+-	s.ipResources = ipResources
+-	s.fakeIP = fakeIP
+-
+-	guid, err := windows.GUIDFromString(guid)
++	ip, ok := netip.AddrFromSlice(clientIP.To4())
++	if !ok || ip.IsUnspecified() {
++		return nil, fmt.Errorf("gateway did not assign a valid IPv4 tunnel address")
++	}
++	routes, err := parseTunnelRoutes(routeTargets)
+ 	if err != nil {
+ 		return nil, err
+ 	}
+ 
+-	dev, err := tun.CreateTUNWithRequestedGUID(interfaceName, &guid, int(MTU))
++	unlock, err := lockTunnelSetup()
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-
+-	s.endpoint = &Endpoint{
+-		client: client,
+-	}
+-
+-	s.endpoint.dev = dev
+-
+-	nativeTunDevice := dev.(*tun.NativeTun)
+-
+-	link := winipcfg.LUID(nativeTunDevice.LUID())
+-
+-	s.endpoint.ip, err = client.IP()
++	defer unlock()
++	active, err := readActiveTunnels()
+ 	if err != nil {
+ 		return nil, err
+ 	}
+-
+-	prefix, err := netip.ParsePrefix(s.endpoint.ip.String() + "/32")
+-	if err != nil {
+-		log.Printf("Parse prefix failed: %v", err) // Fail to set TUN IP is not a fatal problem, so we don't return an error
++	if err = active.check(ip, routes, dnsHijack); err != nil {
++		return nil, err
+ 	}
+ 
+-	err = link.SetIPAddresses([]netip.Prefix{prefix})
++	dev, err := tun.CreateTUNWithRequestedGUID(adapterName, &guid, int(MTU))
+ 	if err != nil {
+-		log.Printf("Set IP address failed: %v", err)
++		return nil, err
++	}
++	link := winipcfg.LUID(dev.(*tun.NativeTun).LUID())
++	ready := false
++	closeDevice := func() error {
++		if dnsHijack {
++			if err := link.SetDNS(windows.AF_INET, nil, nil); err != nil {
++				log.Printf("Clear DNS for %s failed: %v", adapterName, err)
++			}
++		}
++		return dev.Close()
++	}
++	defer func() {
++		if !ready {
++			_ = closeDevice()
++		}
++	}()
++	if err = link.SetIPAddressesForFamily(windows.AF_INET, []netip.Prefix{netip.PrefixFrom(ip, 32)}); err != nil {
++		return nil, fmt.Errorf("set TUN IPv4 address: %w", err)
++	}
++	iface, err := link.Interface()
++	if err != nil {
++		return nil, fmt.Errorf("get TUN interface index: %w", err)
++	}
++	ipInterface, err := link.IPInterface(windows.AF_INET)
++	if err == nil {
++		ipInterface.NLMTU = uint32(MTU)
++		err = ipInterface.Set()
++	}
++	if err != nil {
++		log.Printf("Set TUN MTU failed: %v", err)
+ 	}
+ 
+-	// Set MTU to 1400 otherwise error may occur when packets are large
+-	command := exec.Command("netsh", "interface", "ipv4", "set", "subinterface", interfaceName, fmt.Sprintf("mtu=%d", MTU), "store=persistent")
+-	err = command.Run()
+-	if err != nil {
+-		log.Printf("Run %s failed: %v", command.String(), err)
++	// The bound proxy sockets can use this adapter's fallback without replacing
++	// the ordinary default route, which has a lower metric.
++	nextHop := netip.IPv4Unspecified()
++	if err = link.AddRoute(netip.PrefixFrom(nextHop, 0), nextHop, fallbackRouteMetric); err != nil {
++		return nil, fmt.Errorf("add TUN fallback route: %w", err)
+ 	}
+-
+-	// We must add a route to 0.0.0.0/0, otherwise Windows will refuse to send packets to public network via TUN interface
+-	// Set metric to 9999 to make sure normal traffic not go through TUN interface
+-	command = exec.Command("route", "add", "0.0.0.0", "mask", "0.0.0.0", s.endpoint.ip.String(), "metric", "9999")
+-	err = command.Run()
+-	if err != nil {
+-		log.Printf("Run %s failed: %v", command.String(), err)
+-	}
+-
+-	command = exec.Command("netsh", "interface", "ipv4", "delete", "dnsservers", "ZJU Connect", "all")
+-	err = command.Run()
+-	if err != nil {
+-		log.Printf("Run %s failed: %v", command.String(), err)
++	for _, prefix := range routes {
++		if prefix == netip.PrefixFrom(ip, 32) {
++			continue // Windows installed the adapter's own host route.
++		}
++		if err = link.AddRoute(prefix, nextHop, 1); err != nil {
++			return nil, fmt.Errorf("add TUN route %s: %w", prefix, err)
++		}
++		log.Printf("Add route to %s on %s", prefix, adapterName)
+ 	}
+ 	if dnsHijack {
+-		dnsServerIP := s.endpoint.ip.String()
++		dnsServer := ip
+ 		if fakeIP {
+-			dnsServerIP = "198.18.0.1"
++			dnsServer = fakeDNSAddress
+ 		}
+-		command = exec.Command("netsh", "interface", "ipv4", "add", "dnsservers", "ZJU Connect", dnsServerIP)
+-		err = command.Run()
+-		if err != nil {
+-			log.Printf("Run %s failed: %v", command.String(), err)
++		if err = link.SetDNS(windows.AF_INET, []netip.Addr{dnsServer}, nil); err != nil {
++			return nil, fmt.Errorf("set TUN DNS: %w", err)
+ 		}
+ 	}
+ 
+-	hook_func.RegisterTerminalFunc("Close Tun Device", func(ctx context.Context) error {
+-		dev.Close()
+-		closeCommand := exec.Command("netsh", "interface", "ipv4", "delete", "dnsservers", "ZJU Connect", "all")
+-		return closeCommand.Run()
+-	})
+-	return s, nil
++	hook_func.RegisterTerminalFunc("Close Tun Device", func(context.Context) error { return closeDevice() })
++	ready = true
++	log.Printf("TUN adapter ready: %s", adapterName)
++	return &Stack{
++		endpoint: &Endpoint{
++			client: vpnClient, dev: dev, ip: clientIP.To4(), link: link, interfaceIndex: iface.InterfaceIndex,
++		},
++		ipResources: ipResources,
++		fakeIP:      fakeIP,
++	}, nil
+ }
+diff --git a/stack/tun/dial_windows.go b/stack/tun/dial_windows.go
+--- a/stack/tun/dial_windows.go
++++ b/stack/tun/dial_windows.go
+@@ -2,25 +2,42 @@
+ 
+ import (
+ 	"context"
++	"math/bits"
+ 	"net"
++	"syscall"
+ 
+ 	"github.com/mythologyli/zju-connect/resolve"
++	"golang.org/x/sys/windows"
+ )
++
++const ipUnicastInterface = 31 // IP_UNICAST_IF in ws2ipdef.h
++
++func (ep *Endpoint) dial(ctx context.Context, network string, local, remote net.Addr) (net.Conn, error) {
++	dialer := net.Dialer{
++		LocalAddr: local,
++		Control: func(_, _ string, socket syscall.RawConn) error {
++			var optionError error
++			err := socket.Control(func(fd uintptr) {
++				index := bits.ReverseBytes32(ep.interfaceIndex)
++				optionError = windows.SetsockoptInt(windows.Handle(fd), windows.IPPROTO_IP, ipUnicastInterface, int(index))
++			})
++			if err != nil {
++				return err
++			}
++			return optionError
++		},
++	}
++	return dialer.DialContext(ctx, network, remote.String())
++}
+ 
+ func (s *Stack) DialTCP(ctx context.Context, addr *net.TCPAddr) (net.Conn, error) {
+ 	if s.endpoint.client.CanUseTCPTunnel() && !resolve.TCPPrefersL3(ctx) {
+ 		return s.endpoint.client.DialTCP(ctx, addr)
+ 	}
+ 
+-	return net.DialTCP("tcp4", &net.TCPAddr{
+-		IP:   s.endpoint.ip,
+-		Port: 0,
+-	}, addr)
++	return s.endpoint.dial(ctx, "tcp4", &net.TCPAddr{IP: s.endpoint.ip}, addr)
+ }
+ 
+ func (s *Stack) DialUDP(ctx context.Context, addr *net.UDPAddr) (net.Conn, error) {
+-	return net.DialUDP("udp4", &net.UDPAddr{
+-		IP:   s.endpoint.ip,
+-		Port: 0,
+-	}, addr)
++	return s.endpoint.dial(ctx, "udp4", &net.UDPAddr{IP: s.endpoint.ip}, addr)
+ }
+diff --git a/stack/tun/routes_windows.go b/stack/tun/routes_windows.go
+new file mode 100644
+--- /dev/null
++++ b/stack/tun/routes_windows.go
+@@ -0,0 +1,152 @@
++package tun
++
++import (
++	"errors"
++	"fmt"
++	"net/netip"
++	"runtime"
++	"strings"
++
++	"github.com/mythologyli/zju-connect/log"
++	"golang.org/x/sys/windows"
++	"golang.zx2c4.com/wireguard/windows/tunnel/winipcfg"
++)
++
++const fallbackRouteMetric = 9999
++
++var fakeRoute = netip.MustParsePrefix("198.18.0.0/16")
++var fakeDNSAddress = netip.MustParseAddr("198.18.0.1")
++var broadcastRoute = netip.MustParsePrefix("255.255.255.255/32")
++
++type tunnelRoute struct {
++	prefix  netip.Prefix
++	adapter string
++}
++
++type activeTunnels struct {
++	addresses  map[netip.Addr]string
++	routes     []tunnelRoute
++	dnsAdapter string
++}
++
++func parseTunnelRoutes(targets []string) ([]netip.Prefix, error) {
++	routes := make([]netip.Prefix, 0, len(targets))
++	seen := make(map[netip.Prefix]bool, len(targets))
++	for _, target := range targets {
++		prefix, err := netip.ParsePrefix(target)
++		if err != nil {
++			return nil, fmt.Errorf("invalid TUN route %q: %w", target, err)
++		}
++		if !prefix.Addr().Is4() {
++			log.Printf("Skip unsupported IPv6 TUN route %s", prefix)
++			continue
++		}
++		if prefix.Bits() == 0 {
++			return nil, fmt.Errorf("TUN conflict: 网关下发了默认路由 %s，请使用分流网段", prefix)
++		}
++		prefix = prefix.Masked()
++		if !seen[prefix] {
++			routes = append(routes, prefix)
++			seen[prefix] = true
++		}
++	}
++	return routes, nil
++}
++
++func lockTunnelSetup() (func(), error) {
++	name := windows.StringToUTF16Ptr(`Global\EZ4Connectpro-TunRouteSetup`)
++	mutex, err := windows.CreateMutex(nil, false, name)
++	if err != nil && !errors.Is(err, windows.ERROR_ALREADY_EXISTS) {
++		return nil, fmt.Errorf("open TUN route lock: %w", err)
++	}
++	runtime.LockOSThread()
++	event, err := windows.WaitForSingleObject(mutex, 15000)
++	if err != nil || (event != windows.WAIT_OBJECT_0 && event != windows.WAIT_ABANDONED) {
++		windows.CloseHandle(mutex)
++		runtime.UnlockOSThread()
++		if err != nil {
++			return nil, fmt.Errorf("wait for TUN route lock: %w", err)
++		}
++		return nil, fmt.Errorf("TUN conflict: 另一条连接正在配置网卡，请稍后重试")
++	}
++	return func() {
++		windows.ReleaseMutex(mutex)
++		windows.CloseHandle(mutex)
++		runtime.UnlockOSThread()
++	}, nil
++}
++
++func readActiveTunnels() (activeTunnels, error) {
++	active := activeTunnels{addresses: make(map[netip.Addr]string)}
++	adapters, err := winipcfg.GetAdaptersAddresses(windows.AF_INET, winipcfg.GAAFlagDefault)
++	if err != nil {
++		return active, fmt.Errorf("read IPv4 adapters: %w", err)
++	}
++	managed := make(map[winipcfg.LUID]bool)
++	names := make(map[winipcfg.LUID]string)
++	for _, adapter := range adapters {
++		name := adapter.FriendlyName()
++		names[adapter.LUID] = name
++		isTunnel := strings.EqualFold(name, legacyInterfaceName) || strings.HasPrefix(strings.ToLower(name), strings.ToLower(adapterPrefix))
++		managed[adapter.LUID] = isTunnel
++		for entry := adapter.FirstUnicastAddress; entry != nil; entry = entry.Next {
++			ip, ok := netip.AddrFromSlice(entry.Address.IP())
++			if ok && ip.Unmap().Is4() {
++				active.addresses[ip.Unmap()] = name
++			}
++		}
++		if isTunnel {
++			for dns := adapter.FirstDNSServerAddress; dns != nil; dns = dns.Next {
++				ip, ok := netip.AddrFromSlice(dns.Address.IP())
++				if ok && (ip.Unmap() == fakeDNSAddress || active.addresses[ip.Unmap()] == name) {
++					active.dnsAdapter = name
++					break
++				}
++			}
++		}
++	}
++
++	table, err := winipcfg.GetIPForwardTable2(windows.AF_INET)
++	if err != nil {
++		return active, fmt.Errorf("read Windows IPv4 route table: %w", err)
++	}
++	for _, row := range table {
++		prefix := row.DestinationPrefix.Prefix()
++		if !prefix.IsValid() || !prefix.Addr().Is4() || prefix.Addr().IsMulticast() ||
++			prefix == broadcastRoute {
++			continue
++		}
++		if prefix.Bits() == 0 && (!managed[row.InterfaceLUID] || row.Metric >= fallbackRouteMetric) {
++			continue
++		}
++		if managed[row.InterfaceLUID] || prefix.Overlaps(fakeRoute) {
++			name := names[row.InterfaceLUID]
++			if name == "" {
++				name = fmt.Sprintf("接口 %d", row.InterfaceIndex)
++			}
++			active.routes = append(active.routes, tunnelRoute{prefix, name})
++		}
++	}
++	return active, nil
++}
++
++func (active activeTunnels) check(ip netip.Addr, routes []netip.Prefix, dnsHijack bool) error {
++	if adapter, found := active.addresses[ip]; found {
++		return fmt.Errorf("TUN conflict: 虚拟 IP %s 已由网卡 %s 使用", ip, adapter)
++	}
++	if dnsHijack && active.dnsAdapter != "" {
++		return fmt.Errorf("TUN conflict: 网卡 %s 已启用 DNS 劫持", active.dnsAdapter)
++	}
++	host := netip.PrefixFrom(ip, 32)
++	for _, existing := range active.routes {
++		if host.Overlaps(existing.prefix) {
++			return fmt.Errorf("TUN conflict: 虚拟 IP %s 与网卡 %s 的路由 %s 重叠", ip, existing.adapter, existing.prefix)
++		}
++		for _, desired := range routes {
++			if desired.Overlaps(existing.prefix) {
++				return fmt.Errorf("TUN conflict: 网段 %s 与网卡 %s 的路由 %s 重叠", desired, existing.adapter, existing.prefix)
++			}
++		}
++	}
++	return nil
++}
+diff --git a/stack/tun/routes_windows_test.go b/stack/tun/routes_windows_test.go
+new file mode 100644
+--- /dev/null
++++ b/stack/tun/routes_windows_test.go
+@@ -0,0 +1,55 @@
++package tun
++
++import (
++	"net/netip"
++	"strings"
++	"testing"
++)
++
++func TestTunnelRouteConflicts(t *testing.T) {
++	active := activeTunnels{
++		addresses: map[netip.Addr]string{netip.MustParseAddr("20.0.0.108"): "office"},
++		routes: []tunnelRoute{
++			{netip.MustParsePrefix("10.16.0.0/16"), "office"},
++			{netip.MustParsePrefix("198.18.0.0/15"), "Clash"},
++		},
++		dnsAdapter: "office",
++	}
++	tests := []struct {
++		name     string
++		ip       string
++		route    string
++		hijack   bool
++		conflict string
++	}{
++		{"disjoint", "20.0.0.109", "10.17.0.0/16", false, ""},
++		{"duplicate virtual address", "20.0.0.108", "10.17.0.0/16", false, "虚拟 IP"},
++		{"contained network", "20.0.0.109", "10.16.1.0/24", false, "10.16.0.0/16"},
++		{"containing network", "20.0.0.109", "10.0.0.0/8", false, "10.16.0.0/16"},
++		{"virtual address hits active route", "10.16.0.7", "10.17.0.0/16", false, "虚拟 IP"},
++		{"Clash fake IP overlaps", "20.0.0.109", "198.18.0.0/16", false, "Clash"},
++		{"DNS hijack already claimed", "20.0.0.109", "10.17.0.0/16", true, "DNS"},
++	}
++	for _, tc := range tests {
++		t.Run(tc.name, func(t *testing.T) {
++			err := active.check(netip.MustParseAddr(tc.ip), []netip.Prefix{netip.MustParsePrefix(tc.route)}, tc.hijack)
++			if tc.conflict == "" {
++				if err != nil {
++					t.Fatal(err)
++				}
++			} else if err == nil || !strings.Contains(err.Error(), tc.conflict) {
++				t.Fatalf("want conflict containing %q, got %v", tc.conflict, err)
++			}
++		})
++	}
++}
++
++func TestParseTunnelRoutes(t *testing.T) {
++	routes, err := parseTunnelRoutes([]string{"10.16.0.9/16", "10.16.0.0/16", "fd00::/64"})
++	if err != nil || len(routes) != 1 || routes[0].String() != "10.16.0.0/16" {
++		t.Fatalf("unexpected normalized routes: %v, %v", routes, err)
++	}
++	if _, err := parseTunnelRoutes([]string{"0.0.0.0/0"}); err == nil {
++		t.Fatal("server default route must be rejected")
++	}
++}

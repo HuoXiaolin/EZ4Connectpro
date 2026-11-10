@@ -1,0 +1,32 @@
+{
+  "manifest_version": 3,
+  "name": "EZ4Connectpro 单点登录回传",
+  "version": "1.0.0",
+  "description": "将工作台发起的 aTrust 单点登录票据回传到本机。",
+  "permissions": ["declarativeNetRequestWithHostAccess", "alarms", "storage"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
+  "background": {
+    "service_worker": "cleanup.js",
+    "scripts": ["cleanup.js"]
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "sso@ez4connectpro.local",
+      "strict_min_version": "121.0"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://127.0.0.1/ez4connectpro/*/begin"],
+      "js": ["launch.js"],
+      "run_at": "document_end"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["authorize.html"],
+      "matches": ["http://127.0.0.1/*"]
+    }
+  ]
+}

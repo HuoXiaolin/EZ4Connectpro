@@ -1,0 +1,39 @@
+QMainWindow, QMenuBar { background: #171e23; }
+#aboutDialog, #startupSettingsDialog { background: #222b32; }
+QLabel, QPlainTextEdit, QMenuBar, QMenu, QComboBox, QLineEdit, QListWidget { color: #e3ebef; }
+QMenuBar::item:selected, QMenu::item:selected { background: #303d45; }
+QMenu { background: #232d34; border-color: #3c4d57; }
+#applicationSubtitleLabel, #versionLabel, #profileFilterHint, #profileDetailLabel, #statusDetailLabel,
+#networkModeLabel, #routeSeparatorOne, #routeSeparatorTwo, #routeProfileLabel, #routeAuthLabel, #routeTunnelLabel { color: #a5b9c4; }
+#controlPanel { background: #222b32; border-color: #3a4a54; }
+#profileList::item:hover { background: #29363e; }
+#profileList::item:selected { color: #edf4f7; background: #34434d; }
+#profileList::item:focus, #profileSearch:focus, #protocolFilter:focus, #logPlainTextEdit:focus { border-color: #6cc3e6; }
+#profileSearch, #protocolFilter { background: #253039; border-color: #455762; }
+#profileSearch { selection-color: #e3f4fa; selection-background-color: #315d70; }
+#routeProfileLabel[stageActive="true"], #routeAuthLabel[stageActive="true"], #routeTunnelLabel[stageActive="true"] {
+    border-bottom-color: #62badf; color: #a7e0f7;
+}
+#statusIndicator { background: #788d99; }
+#statusIndicator[connectionState="starting"] { background: #e2aa57; }
+#statusIndicator[connectionState="running"] { background: #62be8d; }
+#statusIndicator[connectionState="failed"] { background: #e18080; }
+#pushButton2, #newProfilePushButton, #guidePushButton,
+#settingPushButton, #profileActionsButton, #openLogPushButton, #copyLogPushButton,
+#clearLogPushButton, #aboutCloseButton { background: #29363e; border-color: #465964; color: #e1eaf0; }
+#pushButton1 { background: #6bc5e9; border-color: #6bc5e9; color: #0b2632; }
+#pushButton1:hover { background: #83d1ef; }
+#pushButton1[connectionState="running"], #pushButton1[connectionState="starting"] { background: #392e31; border-color: #835d62; color: #f0b7bb; }
+#pushButton1[connectionState="running"]:hover, #pushButton1[connectionState="starting"]:hover { background: #493238; }
+#pushButton2:hover, #newProfilePushButton:hover,
+#guidePushButton:hover, #settingPushButton:hover, #profileActionsButton:hover, #openLogPushButton:hover,
+#copyLogPushButton:hover, #clearLogPushButton:hover, #aboutCloseButton:hover { background: #354650; border-color: #607782; }
+#pushButton1:focus, #pushButton2:focus, #newProfilePushButton:focus,
+#guidePushButton:focus, #settingPushButton:focus, #profileActionsButton:focus, #openLogPushButton:focus,
+#copyLogPushButton:focus, #clearLogPushButton:focus, #aboutCloseButton:focus { border-color: #79cbec; }
+#pushButton1:disabled, #pushButton2:disabled, #guidePushButton:disabled, #settingPushButton:disabled, #profileActionsButton:disabled {
+    background: #263139; border-color: #3b4b54; color: #a3b2bc;
+}
+#controlDivider { background: #364750; }
+#logPlainTextEdit { background: #1a2329; border-color: #394a54; color: #d2e0e7; selection-background-color: #365e72; }
+QScrollBar::handle:vertical { background: #526a78; }

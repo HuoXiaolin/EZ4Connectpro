@@ -1,0 +1,16 @@
+<RCC>
+    <qresource>
+        <file>resource/icon.png</file>
+        <file>resource/chevron-down.svg</file>
+        <file>resource/mainwindow.qss</file>
+        <file>resource/mainwindow-light.qss</file>
+        <file>resource/mainwindow-dark.qss</file>
+    </qresource>
+    <qresource prefix="/browser_extension">
+        <file alias="manifest.json">resource/browser_extension/manifest.json</file>
+        <file alias="launch.js">resource/browser_extension/launch.js</file>
+        <file alias="authorize.html">resource/browser_extension/authorize.html</file>
+        <file alias="authorize.js">resource/browser_extension/authorize.js</file>
+        <file alias="cleanup.js">resource/browser_extension/cleanup.js</file>
+    </qresource>
+</RCC>

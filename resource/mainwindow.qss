@@ -1,0 +1,36 @@
+QLabel, QPlainTextEdit, QMenuBar, QMenu, QComboBox, QLineEdit, QListWidget { font-size: 13px; }
+QMenuBar { padding: 1px 10px; }
+QMenuBar::item { background: transparent; border-radius: 4px; padding: 5px 10px; }
+QMenu { border: 1px solid; padding: 6px; }
+QMenu::item { border-radius: 4px; padding: 7px 24px 7px 10px; }
+#applicationNameLabel { font-size: 17px; font-weight: 650; }
+#applicationSubtitleLabel, #versionLabel, #profileFilterHint { font-size: 12px; }
+#profileSectionLabel, #logTitleLabel { font-size: 15px; font-weight: 650; }
+#profileNameLabel { font-size: 26px; font-weight: 650; }
+#aboutTitleLabel { font-size: 22px; font-weight: 650; }
+#aboutCreditsLabel { font-weight: 650; }
+#statusTitleLabel, #endpointLabel { font-size: 14px; font-weight: 600; }
+#statusIndicator { border-radius: 4px; }
+#controlPanel { border: 1px solid; border-radius: 16px; }
+#profileList { border: 0; padding: 1px; outline: 0; background: transparent; }
+#profileList::item { padding: 4px 10px; border: 1px solid transparent; border-radius: 7px; }
+#profileList::item:focus { border: 1px solid; }
+#profileSearch, #protocolFilter { min-height: 32px; padding: 0 8px; border: 1px solid; border-radius: 6px; }
+#protocolFilter::drop-down { subcontrol-origin: padding; width: 24px; border: 0; }
+#protocolFilter::down-arrow { image: url(:/resource/chevron-down.svg); width: 12px; height: 12px; }
+#controlDivider { min-height: 1px; max-height: 1px; border: 0; }
+#routeProfileLabel, #routeAuthLabel, #routeTunnelLabel { padding: 2px 1px 4px; border-bottom: 2px solid transparent; }
+#routeProfileLabel[stageActive="true"], #routeAuthLabel[stageActive="true"], #routeTunnelLabel[stageActive="true"] { font-weight: 650; }
+#pushButton1, #pushButton2, #newProfilePushButton,
+#guidePushButton, #settingPushButton, #profileActionsButton,
+#openLogPushButton, #copyLogPushButton, #clearLogPushButton, #aboutCloseButton {
+    min-height: 32px; border: 1px solid; border-radius: 6px; font-size: 13px; padding: 0 12px;
+}
+#profileActionsButton { padding-right: 24px; }
+#profileActionsButton::menu-indicator { subcontrol-position: right center; right: 8px; }
+#pushButton1 { min-height: 36px; padding: 0 17px; font-weight: 650; }
+#logPlainTextEdit { border: 1px solid; border-radius: 7px; padding: 8px; }
+QScrollBar:vertical { background: transparent; width: 9px; margin: 2px; }
+QScrollBar::handle:vertical { border-radius: 3px; min-height: 24px; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; height: 0; }
