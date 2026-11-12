@@ -2,7 +2,8 @@ param(
     [ValidateSet("amd64", "arm64")]
     [string]$Architecture = "amd64",
     [Parameter(Mandatory)]
-    [string]$OutputDir
+    [string]$OutputDir,
+    [string]$VersionResource
 )
 
 $ErrorActionPreference = "Stop"
@@ -40,6 +41,11 @@ try {
     $env:GOOS = "windows"
     $env:GOARCH = $Architecture
     $env:CGO_ENABLED = "0"
+    if ($VersionResource) {
+        $target = if ($Architecture -eq 'amd64') { 'pe-x86-64' } else { 'pe-aarch64' }
+        & windres.exe --input-format=rc --output-format=coff --target=$target $VersionResource (Join-Path $source 'ez4connectpro.syso')
+        if ($LASTEXITCODE -ne 0) { throw 'Could not compile the VPN core process description' }
+    }
     Push-Location $source
     try {
         & $go build -mod=readonly -trimpath -buildvcs=false -ldflags "-s -w -X main.zjuConnectVersion=v1.3.1 -X main.CommitID=ez4tun1" `

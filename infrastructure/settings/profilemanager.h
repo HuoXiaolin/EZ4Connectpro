@@ -4,8 +4,6 @@
 #include <QString>
 #include <QStringList>
 
-#include <optional>
-
 #include "application/profilebackend.h"
 
 class QSettings;
@@ -17,7 +15,7 @@ public:
     {
         bool enabled = false;
         bool silent = true;
-        std::optional<QString> profileId;
+        QStringList profileIds;
     };
 
     explicit ProfileManager(const QString &storageRoot = {});

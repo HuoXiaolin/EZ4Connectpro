@@ -261,10 +261,8 @@ void MainWindow::updateConnectionState(ConnectionState state)
     ui->statusTitleLabel->setText(supported ? stateTitle(state) : QStringLiteral("暂无所选配置"));
     ui->statusDetailLabel->setText(detail);
     ui->pushButton1->setText(button);
-    trayConnectAction->setText(button);
     const bool canOperate = supported && !quitting && state != ConnectionState::Stopping;
     ui->pushButton1->setEnabled(canOperate);
-    trayConnectAction->setEnabled(canOperate);
     ui->pushButton2->setVisible(running && !usesTun);
     ui->pushButton2->setEnabled(proxyReady && !quitting && !systemProxySession->isBusy()
         && (ownsProxy || !systemProxySession->isEnabled()));
@@ -274,13 +272,12 @@ void MainWindow::updateConnectionState(ConnectionState state)
     ui->profileActionsButton->setEnabled(canEdit && (managed || profile.protocolId == "atrust"));
     ui->importConfigAction->setEnabled(!quitting);
     ui->exportConfigAction->setEnabled(supported && !quitting);
-    trayReleaseProxyAction->setVisible(systemProxySession->isEnabled());
-    trayReleaseProxyAction->setEnabled(!quitting && !systemProxySession->isBusy());
     refreshProperty(ui->routeProfileLabel, "stageActive", !authenticating && !running);
     refreshProperty(ui->routeAuthLabel, "stageActive", authenticating);
     refreshProperty(ui->routeTunnelLabel, "stageActive", running);
     refreshProperty(ui->statusIndicator, "connectionState", appearance);
     refreshProperty(ui->pushButton1, "connectionState", appearance);
+    updateTray();
 }
 
 void MainWindow::importConfiguration()
@@ -375,12 +372,16 @@ void MainWindow::editSelectedProfile()
 
 void MainWindow::startSelectedProfile()
 {
-    const VpnProfile profile = profileService->currentVpnProfile();
+    startProfile(profileService->currentVpnProfile());
+}
+
+void MainWindow::startProfile(const VpnProfile &profile)
+{
     if (!profile.isSupported())
     {
         return;
     }
-    auto *runtime = selectedConnection();
+    auto *runtime = coordinator->connectionFor(profile.settingsPath);
     if (!runtime)
     {
         runtime = coordinator->createConnection(profile);
@@ -399,6 +400,10 @@ void MainWindow::startSelectedProfile()
             {
                 updateConnectionState(state);
             }
+            else
+            {
+                updateTray();
+            }
             refreshProfileList();
         });
         connect(runtime->session, &ConnectionSession::httpProxyReadyChanged, this, [this, runtime]()
@@ -406,6 +411,10 @@ void MainWindow::startSelectedProfile()
             if (runtime == selectedConnection())
             {
                 updateConnectionState(runtime->session->state());
+            }
+            else
+            {
+                updateTray();
             }
         });
         connect(runtime->session, &ConnectionSession::finished, this, [this](ZJU_ERROR)

@@ -52,7 +52,7 @@ void ConnectionSessionState::connectionEstablished()
 
 void ConnectionSessionState::recordError(ZJU_ERROR error)
 {
-    if (currentError == ZJU_ERROR::NONE)
+    if (desiredConnected && currentError == ZJU_ERROR::NONE)
     {
         currentError = error;
     }
@@ -60,6 +60,7 @@ void ConnectionSessionState::recordError(ZJU_ERROR error)
 
 bool ConnectionSessionState::requestStop()
 {
+    if (isActive()) currentError = ZJU_ERROR::NONE;
     desiredConnected = false;
     if (currentState == ConnectionState::Reconnecting)
     {

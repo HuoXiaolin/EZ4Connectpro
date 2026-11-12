@@ -21,7 +21,7 @@ namespace Ui
 
 class ApplicationLogger;
 class ApplicationLogFile;
-class QActionGroup;
+class TrayController;
 class UpdateChecker;
 
 class MainWindow : public QMainWindow
@@ -56,6 +56,8 @@ private:
     void refreshProfileList();
     void editSelectedProfile();
     void startSelectedProfile();
+    void startProfile(const VpnProfile &profile);
+    void startStartupProfiles(const QStringList &profileIds);
     ProfileConnection *selectedConnection() const;
     bool selectedConnectionIsActive() const;
 
@@ -74,6 +76,7 @@ private:
     void updateVersionInfo();
 
     void setupTrayIcon();
+    void updateTray();
 
     void restoreFromTray();
 
@@ -110,11 +113,7 @@ private:
 
     Ui::MainWindow *ui;
     QSystemTrayIcon *trayIcon;
-    QMenu *trayMenu;
-    QMenu *trayProfileMenu;
-    QAction *trayConnectAction;
-    QAction *trayReleaseProxyAction;
-    QActionGroup *traySwitchGroup = nullptr;
+    TrayController *trayController;
     bool manualUpdateCheck = false;
     SystemProxySession *systemProxySession = nullptr;
     MainWindowCoordinator *coordinator;

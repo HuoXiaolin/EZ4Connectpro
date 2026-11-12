@@ -6,6 +6,7 @@
 #include <QByteArray>
 
 #include "application/commandlineoptions.h"
+#include "application/applicationconstants.h"
 #include "infrastructure/storage/applicationpaths.h"
 
 #if defined(Q_OS_WIN)
@@ -42,7 +43,7 @@ bool Privileges::isElevated()
 #endif
 }
 
-bool Privileges::relaunchElevated(const QString &activeConfigPath, bool silent)
+bool Privileges::relaunchElevated(const QString &activeConfigPath, bool silent, bool startupBatch)
 {
 #if defined(Q_OS_WIN)
     const QString program = ApplicationPaths::launcherExecutable();
@@ -54,7 +55,7 @@ bool Privileges::relaunchElevated(const QString &activeConfigPath, bool silent)
         arguments << "--profiles-dir" << QFileInfo(profiles).absoluteFilePath();
     }
     const QString overridePath = CommandLineOptions::value(currentArguments, "--config-path");
-    if (!overridePath.isEmpty() && QFileInfo(overridePath) == QFileInfo(activeConfigPath))
+    if (!startupBatch && !overridePath.isEmpty() && QFileInfo(overridePath) == QFileInfo(activeConfigPath))
     {
         arguments << "--config-path" << QFileInfo(activeConfigPath).absoluteFilePath();
     }
@@ -62,7 +63,8 @@ bool Privileges::relaunchElevated(const QString &activeConfigPath, bool silent)
     {
         arguments << "--silent";
     }
-    arguments << "--connect" << "--wait-for-pid" << QString::number(QCoreApplication::applicationPid());
+    arguments << (startupBatch ? ApplicationConstants::AutoStartArgument : QStringLiteral("--connect"))
+              << "--wait-for-pid" << QString::number(QCoreApplication::applicationPid());
     QStringList quotedArguments;
     for (const QString &argument : arguments)
     {
@@ -81,6 +83,7 @@ bool Privileges::relaunchElevated(const QString &activeConfigPath, bool silent)
 #else
     Q_UNUSED(activeConfigPath)
     Q_UNUSED(silent)
+    Q_UNUSED(startupBatch)
     return false;
 #endif
 }

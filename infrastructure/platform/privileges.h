@@ -6,7 +6,7 @@ class QString;
 namespace Privileges
 {
 bool isElevated();
-bool relaunchElevated(const QString &activeConfigPath, bool silent);
+bool relaunchElevated(const QString &activeConfigPath, bool silent, bool startupBatch = false);
 void waitForPreviousInstance(int argc, char *argv[]);
 }
 

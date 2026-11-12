@@ -110,6 +110,31 @@ bool establishedConnectionEndsAsInterrupted()
     }
     return true;
 }
+
+bool manualStopDiscardsShutdownErrors()
+{
+    for (const bool established : {false, true})
+    {
+        ConnectionSessionState session;
+        session.requestStart({true, 1});
+        if (established) session.connectionEstablished();
+        session.recordError(ZJU_ERROR::AUTH_EXPIRED);
+        if (!session.requestStop()) return false;
+        session.recordError(ZJU_ERROR::AUTH_EXPIRED);
+        session.recordError(ZJU_ERROR::OTHER);
+        if (session.processFinished() != ProcessFinishAction::Complete
+            || session.state() != ConnectionState::Disconnected || session.error() != ZJU_ERROR::NONE)
+        {
+            qCritical() << "manual stop was incorrectly reported as authentication failure";
+            return false;
+        }
+    }
+    ConnectionSessionState realFailure;
+    realFailure.requestStart({false, 1});
+    realFailure.recordError(ZJU_ERROR::AUTH_EXPIRED);
+    return realFailure.processFinished() == ProcessFinishAction::Complete
+        && realFailure.state() == ConnectionState::Failed && realFailure.error() == ZJU_ERROR::AUTH_EXPIRED;
+}
 }
 
 int main(int argc, char *argv[])
@@ -119,6 +144,7 @@ int main(int argc, char *argv[])
         && reconnectsOnlyEligibleFailures()
         && keepsFirstErrorAndCancelsPendingReconnect()
         && establishedConnectionEndsAsInterrupted()
+        && manualStopDiscardsShutdownErrors()
         ? 0
         : 1;
 }

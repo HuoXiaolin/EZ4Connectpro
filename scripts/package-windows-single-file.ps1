@@ -8,7 +8,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $build = (Resolve-Path -LiteralPath $BuildDir).Path
 $output = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($OutputFile)
-$resource = Join-Path $build "EZ4Connectpro.rc"
+$resource = Join-Path $build "EZ4Connectpro.Launcher.rc"
 if (-not (Test-Path -LiteralPath $resource -PathType Leaf)) {
     throw "Windows file information is missing. Reconfigure and build EZ4Connectpro before packaging."
 }

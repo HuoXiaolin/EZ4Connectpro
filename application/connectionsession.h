@@ -42,6 +42,7 @@ signals:
     void finished(ZJU_ERROR error);
 
 private:
+    bool acceptsCoreEvents() const;
     void startCore();
     void handleCoreFinished();
     void handleSudoPasswordRequest();

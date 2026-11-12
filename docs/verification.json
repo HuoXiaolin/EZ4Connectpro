@@ -1,0 +1,109 @@
+{
+  "version": "2.0.1",
+  "date": "2026-11-12",
+  "platform": "Windows x64",
+  "artifact": "EZ4Connectpro-windows-x64.exe",
+  "artifact_bytes": 28450816,
+  "sha256": "8a35e3c1115c34d5e02857befac000067ef6933349c9a0ccce4564f3a9e2c567",
+  "runtime_payload_bytes": 59395917,
+  "ctest": {
+    "passed": 26,
+    "failed": 0,
+    "seconds": 4.23,
+    "stage": "Previous full suite after intentional-shutdown authentication fix, before close-to-tray policy change; no unrelated rerun for the close policy"
+  },
+  "final_startup_tray_regression": {
+    "passed": 9,
+    "failed": 0,
+    "seconds": 2.83,
+    "stage": "After process lifetime changes, before window-caption-only adjustment"
+  },
+  "portable_cleanup_safety_tests": {
+    "passed": 2,
+    "failed": 0,
+    "seconds": 0.019,
+    "scope": "Refuse unrelated owner processes and invalid cleanup targets without deleting data"
+  },
+  "tray": {
+    "dpi_sizes": [
+      16,
+      20,
+      24,
+      32,
+      48
+    ],
+    "state_transitions": "passed",
+    "live_menu_updates": "passed",
+    "long_tooltip_overflow": "passed",
+    "parallel_connections_and_background_reconnect": "passed with local mock core",
+    "targeted_stop_and_stop_all": "passed with local mock core",
+    "native_restore_maximize_notification": "passed on isolated desktop"
+  },
+  "startup": {
+    "multiple_selections": "passed",
+    "legacy_single_selection_migration": "passed",
+    "empty_disabled_manual_launch": "passed",
+    "conflict_does_not_stop_other_lines": "passed with mock core",
+    "batch_elevation_and_cancellation": "passed with stubbed UAC; no real elevation or registry mutation"
+  },
+  "processes": {
+    "main_window": "主界面 - EZ4Connectpro",
+    "cleanup_description": "EZ4Connectpro · 运行文件管理",
+    "core_description": "EZ4Connectpro · VPN 连接核心",
+    "bootstrap_exits_after_handoff": "passed",
+    "cleanup_is_direct_child_of_ui": "passed",
+    "second_launch_reuses_existing_ui": "passed",
+    "normal_exit_cleanup": "passed",
+    "idle_ui_forced_exit_cleanup": "passed",
+    "final_caption_and_metadata": "passed",
+    "task_manager_visual_grouping": "Not verified: Task Manager returned a blank surface and no UI Automation children on the isolated desktop; no foreground fallback was used"
+  },
+  "package": {
+    "runs_without_sdk_on_path": true,
+    "file_version": "2.0.1",
+    "product_version": "2.0.1",
+    "webengine_qml_quick_dependencies": false,
+    "successful_packages_after_multi_startup_change": 6,
+    "final_smoke_seconds": 5.15,
+    "previous_build_test_package_seconds": 157.83,
+    "final_build_package_seconds": null,
+    "timing_note": "Final close-policy build/package completed; its command timing was not retained. Native packaged smoke timing is measured."
+  },
+  "desktop": "Independent WinSta0 desktop; input desktop unchanged",
+  "scope": "Local and simulated checks only. Real Windows logon, live VPN gateway, TUN hardware and connected-core crash cleanup were not exercised.",
+  "tools": "D:\\Agant\\toolchain\\EZ4Connectpro",
+  "source_delivery": "D:\\Agant\\Github_Source\\EZ4Connectpro",
+  "binary_delivery": "D:\\Agant\\Github_Releases\\EZ4Connectpro\\EZ4Connectpro-windows-x64.exe",
+  "delivery": {
+    "source_files": 185,
+    "sync_seconds": 0.7,
+    "sha256_verified": true,
+    "only_latest_exe": true
+  },
+  "cleanup": {
+    "final_removed_bytes": 283721303,
+    "final_seconds": 5.6,
+    "earlier_removed_bytes": 1712955656,
+    "shared_tools_and_module_dependencies_preserved": true,
+    "build_directory_removed": true,
+    "previous_final_removed_bytes": 399596038
+  },
+  "shutdown_authentication_fix": {
+    "reproduced_before_fix": "Both session/state regression executables failed as expected",
+    "manual_disconnect_and_cancel_reconnect": "passed",
+    "late_auth_prompts_ignored": "passed",
+    "diagnostic_output_preserved": "passed",
+    "real_authentication_failure_preserved": "passed",
+    "two_line_tray_exit": "passed with injected AUTH_EXPIRED after both sessions entered Stopping; no error dialog or reconnect"
+  },
+  "close_to_tray": {
+    "idle_caption_close_keeps_process_alive": "passed with final packaged EXE",
+    "tray_click_restores_hidden_window": "passed with final packaged EXE",
+    "tray_exit_ends_application": "passed; exit code 0 and no remaining QA child processes",
+    "runtime_directory_removed_after_exit": "passed",
+    "input_desktop_unchanged": true,
+    "native_smoke_attempts": 2,
+    "initial_attempt": "Close and restore passed; native helper keyboard activation of Exit did not work on the isolated desktop. Helper changed to mouse messages; final check passed.",
+    "scope": "Idle close policy changed; connected close already hid to tray and uses the same unconditional hide path."
+  }
+}

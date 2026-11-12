@@ -10,7 +10,6 @@
 #include <QFontDatabase>
 #include <QCoreApplication>
 #include <QGuiApplication>
-#include <QActionGroup>
 #include <QInputDialog>
 #include <QMargins>
 #include <QStyle>
@@ -39,6 +38,7 @@
 #include "presentation/dialogs/configurationguidedialog/configurationguidedialog.h"
 #include "presentation/dialogs/vpnprofiledialog/vpnprofiledialog.h"
 #include "presentation/presentationhelpers.h"
+#include "presentation/main/traycontroller.h"
 #include "ui_mainwindow.h"
 
 namespace
@@ -83,18 +83,8 @@ MainWindow::MainWindow(
     const auto startup = profileStorage.startupOptions();
     const bool silent = ((startupLaunch && startup.silent) || arguments.contains("--silent"))
         && QSystemTrayIcon::isSystemTrayAvailable();
-    const bool requestedStartupProfile = startupLaunch && startup.enabled && startup.profileId.has_value()
+    const bool requestedStartupProfiles = startupLaunch && startup.enabled && !startup.profileIds.isEmpty()
         && !explicitConnect && overrideConfigPath.isEmpty();
-    bool connectStartupProfile = false;
-    if (requestedStartupProfile)
-    {
-        const auto profiles = profileService->vpnProfiles();
-        const auto selected = std::find_if(profiles.cbegin(), profiles.cend(), [&startup](const VpnProfile &profile)
-        {
-            return profile.id == *startup.profileId && !profile.server.isEmpty() && profile.port > 0 && profile.port <= 65535;
-        });
-        connectStartupProfile = selected != profiles.cend() && profileService->switchTo(selected->id);
-    }
 
     currentProfileId = profileService->currentProfileId();
     settings = profileService->settings();
@@ -237,11 +227,11 @@ MainWindow::MainWindow(
     );
 
     clearLog();
-    if (requestedStartupProfile && !connectStartupProfile)
+    if (requestedStartupProfiles)
     {
-        qWarning().noquote() << "开机连接线路不可用。请在「设置 → 启动设置」中选择线路。";
+        QTimer::singleShot(0, this, [this, ids = startup.profileIds]() { startStartupProfiles(ids); });
     }
-    if (connectStartupProfile || (explicitConnect && supported && !profileService->recoveredUnsupportedProfile()))
+    else if (explicitConnect && supported && !profileService->recoveredUnsupportedProfile())
     {
         QTimer::singleShot(0, ui->pushButton1, &QPushButton::click);
     }
@@ -271,16 +261,14 @@ MainWindow::MainWindow(
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
-    if (coordinator->hasActiveConnections())
-    {
-        event->ignore();
-        hide();
-        showNotification(ApplicationConstants::ApplicationName, "程序已最小化到系统托盘，单击图标可恢复窗口。", QSystemTrayIcon::MessageIcon::Information);
-    }
-    else
+    if (quitting)
     {
         event->accept();
+        return;
     }
+    event->ignore();
+    hide();
+    showNotification(ApplicationConstants::ApplicationName, "程序已隐藏到系统托盘，单击图标可恢复窗口。", QSystemTrayIcon::MessageIcon::Information);
 }
 
 void MainWindow::changeEvent(QEvent *event)
@@ -326,35 +314,85 @@ void MainWindow::applyColorScheme(Qt::ColorScheme scheme)
 
 void MainWindow::setupTrayIcon()
 {
-    // 系统托盘
-    trayIcon = new QSystemTrayIcon(this);
-    trayIcon->setIcon(
-        QIcon(QPixmap(":/resource/icon.png").scaled(512, 512, Qt::KeepAspectRatio, Qt::SmoothTransformation)));
-    trayIcon->setToolTip(QApplication::applicationName());
-    connect(trayIcon, &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason)
+    trayController = new TrayController(this);
+    trayIcon = trayController->icon();
+    connect(trayController, &TrayController::showWindowRequested, this, &MainWindow::restoreFromTray);
+    connect(trayController, &TrayController::connectionRequested, this, [this](const QString &path, bool start)
     {
-        if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick
-            || reason == QSystemTrayIcon::MiddleClick)
+        if (quitting) return;
+        auto *runtime = coordinator->connectionFor(path);
+        if (!start)
         {
-            restoreFromTray();
+            if (runtime && runtime->session->isActive()) runtime->session->stop();
+            return;
+        }
+        if (runtime && runtime->session->isActive()) return;
+        for (const auto &profile : profileEntries)
+        {
+            if (profile.settingsPath == path)
+            {
+                const QString id = profile.id;
+                if (path == settings->fileName() || switchProfile(id)) startSelectedProfile();
+                return;
+            }
         }
     });
-    connect(trayIcon, &QSystemTrayIcon::messageClicked, this, &MainWindow::restoreFromTray);
+    connect(trayController, &TrayController::showProfileRequested, this, [this](const QString &path)
+    {
+        if (quitting) return;
+        for (const auto &profile : profileEntries)
+        {
+            if (profile.settingsPath == path)
+            {
+                const QString id = profile.id;
+                if (path == settings->fileName() || switchProfile(id))
+                {
+                    restoreFromTray();
+                    updateTray();
+                }
+                return;
+            }
+        }
+    });
+    connect(trayController, &TrayController::disconnectAllRequested, coordinator, &MainWindowCoordinator::stopConnections);
+    connect(trayController, &TrayController::newProfileRequested, this, [this]() { restoreFromTray(); createProfile(); });
+    connect(trayController, &TrayController::importRequested, this, [this]() { restoreFromTray(); importConfiguration(); });
+    connect(trayController, &TrayController::exportRequested, this, [this]() { restoreFromTray(); exportConfiguration(); });
+    connect(trayController, &TrayController::startupSettingsRequested, this, [this]() { restoreFromTray(); showStartupSettings(); });
+    connect(trayController, &TrayController::openLogRequested, ui->openLogPushButton, &QPushButton::click);
+    connect(trayController, &TrayController::releaseProxyRequested, systemProxySession, &SystemProxySession::disable);
+    connect(trayController, &TrayController::quitRequested, this, &MainWindow::gracefullyQuit);
+}
 
-    trayConnectAction = new QAction("连接服务器", this);
-    trayProfileMenu = new QMenu("配置选择", this);
-    traySwitchGroup = new QActionGroup(this);
-    trayMenu = new QMenu(this);
-    trayMenu->addAction(trayConnectAction);
-    trayMenu->addSeparator();
-    trayMenu->addMenu(trayProfileMenu);
-    trayMenu->addSeparator();
-    trayReleaseProxyAction = trayMenu->addAction("释放本工具代理", systemProxySession, &SystemProxySession::disable);
-    trayMenu->addAction("显示主界面", this, &MainWindow::restoreFromTray);
-    trayMenu->addAction("退出 " + QApplication::applicationName(), this, &MainWindow::gracefullyQuit);
-    connect(trayConnectAction, &QAction::triggered, ui->pushButton1, &QPushButton::click);
-    trayIcon->setContextMenu(trayMenu);
-    trayIcon->show();
+void MainWindow::updateTray()
+{
+    QList<TrayConnection> connections;
+    for (const auto &profile : profileEntries)
+    {
+        TrayConnection item;
+        item.profile = profile;
+        const auto *runtime = coordinator->connectionFor(profile.settingsPath);
+        if (runtime)
+        {
+            item.state = runtime->session->state();
+            item.ready = runtime->session->isHttpProxyReady();
+            item.ownsSystemProxy = systemProxySession->isOwnedBy(profile.settingsPath) && systemProxySession->isEnabled();
+        }
+        if (runtime && runtime->session->isActive())
+        {
+            item.routing = runtime->routing;
+            item.profile.socksPort = runtime->socksPort;
+            item.profile.httpPort = runtime->httpPort;
+        }
+        else
+        {
+            QSettings stored(profile.settingsPath, QSettings::IniFormat);
+            item.routing = preferredIntranetRouting(stored);
+        }
+        connections.append(item);
+    }
+    trayController->updateConnections(connections, settings->fileName(), quitting,
+                                     systemProxySession->isEnabled(), systemProxySession->isBusy());
 }
 
 void MainWindow::restoreFromTray()
@@ -393,22 +431,7 @@ void MainWindow::restoreFromTray()
 
 void MainWindow::refreshProfiles()
 {
-    trayProfileMenu->clear();
     profileEntries = profileService->vpnProfiles();
-    for (const VpnProfile &profile : profileEntries)
-    {
-        auto *action = trayProfileMenu->addAction(profile.name);
-        action->setCheckable(true);
-        action->setChecked(profile.settingsPath == settings->fileName());
-        traySwitchGroup->addAction(action);
-        connect(action, &QAction::triggered, this, [this, profile]()
-        {
-            if (profile.settingsPath != settings->fileName())
-            {
-                switchProfile(profile.id);
-            }
-        });
-    }
     refreshProfileList();
     resetConnectionUi();
 }
@@ -732,6 +755,7 @@ void MainWindow::cleanUpWhenQuit()
 void MainWindow::gracefullyQuit()
 {
     quitting = true;
+    updateTray();
     coordinator->stopConnections();
     if (!coordinator->hasActiveConnections())
     {

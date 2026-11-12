@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.12)
-project(EZ4Connectpro VERSION 2.0.0)
+project(EZ4Connectpro VERSION 2.0.1)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_AUTOMOC ON)
@@ -38,6 +38,7 @@ set(SOURCE_FILES
     presentation/main/mainwindow.cpp
     presentation/main/workspace.cpp
     presentation/main/startupsettings.cpp
+    presentation/main/traycontroller.cpp
     presentation/main/mainwindowcoordinator.cpp
     presentation/coordinators/authdialogcoordinator.cpp
     presentation/coordinators/connectionuicontroller.cpp
@@ -62,6 +63,7 @@ set(SOURCE_FILES
     infrastructure/logging/applicationlogfile.cpp
     infrastructure/platform/autostart.cpp
     infrastructure/platform/privileges.cpp
+    infrastructure/platform/portableruntime.cpp
     infrastructure/platform/platformtunreservation.cpp
     infrastructure/settings/settingsprofileloader.cpp
     infrastructure/storage/applicationpaths.cpp
@@ -84,6 +86,10 @@ set(SOURCE_FILES
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 
+# Ensure UI edits invalidate their consumers on the first incremental Ninja build.
+set_property(SOURCE presentation/main/mainwindow.cpp presentation/main/workspace.cpp APPEND
+    PROPERTY OBJECT_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/presentation/main/mainwindow.ui")
+
 if (NOT WIN32)
     list(APPEND SOURCE_FILES infrastructure/platform/systemproxyfunctions.cpp)
 endif()
@@ -97,7 +103,17 @@ if (WIN32)
     if(PROJ_VER MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)")
         set(WINDOWS_FILE_VERSION "${CMAKE_MATCH_1},${CMAKE_MATCH_2},${CMAKE_MATCH_3},0")
     endif()
+    set(WINDOWS_FILE_DESCRIPTION "EZ4Connectpro")
+    set(WINDOWS_ORIGINAL_FILENAME "EZ4Connectpro.exe")
+    set(WINDOWS_COPYRIGHT "EZ4Connectpro by ${PROJ_AUTHOR}. Based on EZ4Connect by Chenx Dust. GPL-3.0.")
     configure_file(resource/windows.rc.in EZ4Connectpro.rc @ONLY)
+    set(WINDOWS_FILE_DESCRIPTION "EZ4Connectpro · 运行文件管理")
+    set(WINDOWS_ORIGINAL_FILENAME "EZ4Connectpro-windows-x64.exe")
+    configure_file(resource/windows.rc.in EZ4Connectpro.Launcher.rc @ONLY)
+    set(WINDOWS_FILE_DESCRIPTION "EZ4Connectpro · VPN 连接核心")
+    set(WINDOWS_ORIGINAL_FILENAME "zju-connect.exe")
+    set(WINDOWS_COPYRIGHT "ZJU Connect by Mythologyli. Windows integration by ${PROJ_AUTHOR}. AGPL-3.0.")
+    configure_file(resource/windows.rc.in EZ4Connectpro.Core.rc @ONLY)
 
     add_executable(${PROJECT_NAME} WIN32
         ${SOURCE_FILES}
@@ -153,6 +169,45 @@ target_link_libraries(${PROJECT_NAME}
 include(CTest)
 
 if(BUILD_TESTING)
+    if(WIN32)
+        add_executable(windows_desktop_check scripts/windows-qa/desktop-check.cpp)
+        target_link_libraries(windows_desktop_check gdiplus ws2_32 version)
+        if(MINGW)
+            target_link_options(windows_desktop_check PRIVATE -municode -static -static-libgcc -static-libstdc++)
+        endif()
+
+        set(STARTUP_TEST_SOURCES ${SOURCE_FILES})
+        list(REMOVE_ITEM STARTUP_TEST_SOURCES main.cpp
+            infrastructure/platform/privileges.cpp infrastructure/platform/autostart.cpp)
+        add_executable(startupintegration_test tests/startupintegration_test.cpp ${STARTUP_TEST_SOURCES})
+        target_link_libraries(startupintegration_test Qt::Core Qt::Concurrent Qt::Gui Qt::Widgets
+            Qt::Network Qt::Svg Qt::Core5Compat Qt::WebSockets SingleApplication::SingleApplication ${PLATFORM_LIBS})
+        add_executable(startup_mock_core tests/startup_mock_core.cpp)
+        target_link_libraries(startup_mock_core Qt::Core Qt::Network)
+        set_target_properties(startup_mock_core PROPERTIES OUTPUT_NAME "zju-connect")
+        set_target_properties(startupintegration_test startup_mock_core PROPERTIES
+            RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/startup-qa")
+        add_dependencies(startupintegration_test startup_mock_core)
+        foreach(scenario auto empty disabled conflict elevate denied shutdown)
+            add_test(NAME startup_${scenario}_test COMMAND startupintegration_test --autostart --scenario ${scenario})
+            set_tests_properties(startup_${scenario}_test PROPERTIES ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1")
+        endforeach()
+        foreach(scenario manual ui)
+            add_test(NAME startup_${scenario}_test COMMAND startupintegration_test --scenario ${scenario})
+            set_tests_properties(startup_${scenario}_test PROPERTIES ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1")
+        endforeach()
+    endif()
+
+    add_executable(traycontroller_test
+        tests/traycontroller_test.cpp
+        presentation/main/traycontroller.cpp
+        application/vpnprofile.cpp
+        resource.qrc
+    )
+    target_link_libraries(traycontroller_test Qt::Core Qt::Gui Qt::Widgets)
+    add_test(NAME traycontroller_test COMMAND traycontroller_test)
+    set_tests_properties(traycontroller_test PROPERTIES ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1")
+
     add_executable(applicationlogger_test
         tests/applicationlogger_test.cpp
         application/applicationlogger.cpp

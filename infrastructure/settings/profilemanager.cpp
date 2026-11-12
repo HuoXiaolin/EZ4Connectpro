@@ -134,7 +134,21 @@ bool ProfileManager::renameProfile(const QString &oldId, const QString &newId) c
         return false;
     }
 
-    return QFile::rename(sourcePath, targetPath);
+    if (!QFile::rename(sourcePath, targetPath))
+    {
+        return false;
+    }
+    auto startup = startupOptions();
+    if (startup.profileIds.contains(sourceId))
+    {
+        startup.profileIds.replaceInStrings(QRegularExpression("^" + QRegularExpression::escape(sourceId) + "$"), targetId);
+        if (!saveStartupOptions(startup))
+        {
+            QFile::rename(targetPath, sourcePath);
+            return false;
+        }
+    }
+    return true;
 }
 
 bool ProfileManager::removeProfile(const QString &profileId) const
@@ -145,12 +159,12 @@ bool ProfileManager::removeProfile(const QString &profileId) const
         return false;
     }
     const auto startup = startupOptions();
-    if (startup.profileId != normalizedId)
+    if (!startup.profileIds.contains(normalizedId))
     {
         return QFile::remove(profilePath(normalizedId));
     }
     auto updatedStartup = startup;
-    updatedStartup.profileId.reset();
+    updatedStartup.profileIds.removeAll(normalizedId);
     if (!saveStartupOptions(updatedStartup))
     {
         return false;
@@ -185,9 +199,14 @@ ProfileManager::StartupOptions ProfileManager::startupOptions() const
     StartupOptions options;
     options.enabled = state.value("Global/AutoStart", false).toBool();
     options.silent = state.value("Global/SilentStart", true).toBool();
-    if (state.value("Global/StartupConnect", false).toBool() && state.contains("Global/StartupProfile"))
+    if (state.contains("Global/StartupProfiles"))
     {
-        options.profileId = state.value("Global/StartupProfile").toString();
+        options.profileIds = state.value("Global/StartupProfiles").toStringList();
+        options.profileIds.removeDuplicates();
+    }
+    else if (state.value("Global/StartupConnect", false).toBool() && state.contains("Global/StartupProfile"))
+    {
+        options.profileIds.append(state.value("Global/StartupProfile").toString());
     }
     return options;
 }
@@ -197,15 +216,11 @@ bool ProfileManager::saveStartupOptions(const StartupOptions &options) const
     QSettings state(statePath, QSettings::IniFormat);
     state.setValue("Global/AutoStart", options.enabled);
     state.setValue("Global/SilentStart", options.silent);
-    state.setValue("Global/StartupConnect", options.profileId.has_value());
-    if (options.profileId)
-    {
-        state.setValue("Global/StartupProfile", *options.profileId);
-    }
-    else
-    {
-        state.remove("Global/StartupProfile");
-    }
+    QStringList ids = options.profileIds;
+    ids.removeDuplicates();
+    state.setValue("Global/StartupProfiles", ids);
+    state.remove("Global/StartupConnect");
+    state.remove("Global/StartupProfile");
     state.sync();
     return state.status() == QSettings::NoError;
 }
@@ -213,7 +228,7 @@ bool ProfileManager::saveStartupOptions(const StartupOptions &options) const
 void ProfileManager::migrateStartupOptions(const QSettings &profile, const QString &profileId) const
 {
     QSettings state(statePath, QSettings::IniFormat);
-    if (state.contains("Global/StartupConnect"))
+    if (state.contains("Global/StartupProfiles"))
     {
         return;
     }
@@ -222,9 +237,10 @@ void ProfileManager::migrateStartupOptions(const QSettings &profile, const QStri
     {
         options.enabled = profile.value("Common/AutoStart", false).toBool();
     }
-    if (options.enabled && profile.value("Common/ConnectAfterStart", false).toBool())
+    if (!state.contains("Global/StartupConnect") && options.enabled
+        && profile.value("Common/ConnectAfterStart", false).toBool())
     {
-        options.profileId = profileId;
+        options.profileIds = QStringList{profileId};
     }
     saveStartupOptions(options);
 }

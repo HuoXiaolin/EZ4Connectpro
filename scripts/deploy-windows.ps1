@@ -51,7 +51,11 @@ if ($CoreArchive) {
         }
     }
 } else {
-    & (Join-Path $PSScriptRoot "build-windows-core.ps1") -Architecture $Architecture -OutputDir $output
+    # The portable MinGW build supplies functional process labels. Other existing
+    # deployment toolchains keep their original core build without requiring windres.
+    $coreResource = if ($Portable) { Join-Path (Resolve-Path -LiteralPath $BuildDir).Path 'EZ4Connectpro.Core.rc' } else { $null }
+    & (Join-Path $PSScriptRoot "build-windows-core.ps1") -Architecture $Architecture -OutputDir $output `
+        -VersionResource $coreResource
 }
 if (-not (Test-Path -LiteralPath (Join-Path $output "zju-connect.exe") -PathType Leaf)) {
     throw "The deployment does not contain zju-connect.exe"

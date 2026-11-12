@@ -8,17 +8,36 @@ ConnectionSession::ConnectionSession(CoreProcess *coreProcess, QObject *parent)
     reconnectTimer.setSingleShot(true);
 
     connect(coreProcess, &CoreProcess::outputRead, this, &ConnectionSession::outputRead);
-    connect(coreProcess, &CoreProcess::graphCaptcha, this, &ConnectionSession::graphCaptcha);
-    connect(coreProcess, &CoreProcess::smsCode, this, &ConnectionSession::smsCode);
-    connect(coreProcess, &CoreProcess::totpCode, this, &ConnectionSession::totpCode);
-    connect(coreProcess, &CoreProcess::randCode, this, &ConnectionSession::randCode);
-    connect(coreProcess, &CoreProcess::radiusCode, this, &ConnectionSession::radiusCode);
-    connect(coreProcess, &CoreProcess::ssoAuth, this, &ConnectionSession::ssoAuth);
+    connect(coreProcess, &CoreProcess::graphCaptcha, this, [this](const QString &file)
+    {
+        if (acceptsCoreEvents()) emit graphCaptcha(file);
+    });
+    connect(coreProcess, &CoreProcess::smsCode, this, [this](bool skip)
+    {
+        if (acceptsCoreEvents()) emit smsCode(skip);
+    });
+    connect(coreProcess, &CoreProcess::totpCode, this, [this]()
+    {
+        if (acceptsCoreEvents()) emit totpCode();
+    });
+    connect(coreProcess, &CoreProcess::randCode, this, [this]()
+    {
+        if (acceptsCoreEvents()) emit randCode();
+    });
+    connect(coreProcess, &CoreProcess::radiusCode, this, [this](bool skip)
+    {
+        if (acceptsCoreEvents()) emit radiusCode(skip);
+    });
+    connect(coreProcess, &CoreProcess::ssoAuth, this, [this](const QString &url)
+    {
+        if (acceptsCoreEvents()) emit ssoAuth(url);
+    });
     connect(coreProcess, &CoreProcess::askSudoPass,
             this, &ConnectionSession::handleSudoPasswordRequest);
 
     connect(coreProcess, &CoreProcess::error, this, [this](ZJU_ERROR error, const QString &detail)
     {
+        if (!acceptsCoreEvents()) return;
         if (sessionState.error() == ZJU_ERROR::NONE)
         {
             coreErrorDetail = detail;
@@ -31,6 +50,7 @@ ConnectionSession::ConnectionSession(CoreProcess *coreProcess, QObject *parent)
     });
     connect(coreProcess, &CoreProcess::connectionEstablished, this, [this]()
     {
+        if (!acceptsCoreEvents()) return;
         sessionState.connectionEstablished();
         emit stateChanged(sessionState.state());
     });
@@ -72,6 +92,7 @@ bool ConnectionSession::start(const ConnectionProfile &profile, const ReconnectP
 void ConnectionSession::stop()
 {
     const ConnectionState previousState = sessionState.state();
+    if (sessionState.isActive()) coreErrorDetail.clear();
     const bool processNeedsStop = sessionState.requestStop();
     if (previousState == ConnectionState::Reconnecting)
     {
@@ -90,7 +111,7 @@ void ConnectionSession::stop()
 
 void ConnectionSession::submitInput(const QByteArray &data)
 {
-    coreProcess->writeInput(data);
+    if (acceptsCoreEvents()) coreProcess->writeInput(data);
 }
 
 void ConnectionSession::cancelInteractiveInput()
@@ -135,6 +156,12 @@ QString ConnectionSession::errorDetail() const
     return coreErrorDetail;
 }
 
+bool ConnectionSession::acceptsCoreEvents() const
+{
+    return sessionState.wantsConnection()
+        && (state() == ConnectionState::Starting || state() == ConnectionState::Running);
+}
+
 void ConnectionSession::startCore()
 {
     sudoPasswordSubmitted = false;
@@ -160,6 +187,7 @@ void ConnectionSession::handleCoreFinished()
 
 void ConnectionSession::handleSudoPasswordRequest()
 {
+    if (!acceptsCoreEvents()) return;
     if (savedSudoPassword.isEmpty())
     {
         emit askSudoPass();

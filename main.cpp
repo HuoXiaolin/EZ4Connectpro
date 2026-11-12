@@ -11,6 +11,7 @@
 #include "application/commandlineoptions.h"
 #include "infrastructure/logging/applicationlogfile.h"
 #include "infrastructure/platform/privileges.h"
+#include "infrastructure/platform/portableruntime.h"
 #include "infrastructure/storage/applicationpaths.h"
 #include "presentation/main/mainwindow.h"
 
@@ -33,6 +34,7 @@ int main(int argc, char *argv[])
     QApplication::setApplicationVersion(PROJ_VER);
     QLocale::setDefault(QLocale(QLocale::Chinese, QLocale::SimplifiedChineseScript, QLocale::China));
     ApplicationPaths::setProfileRoot(CommandLineOptions::value(app.arguments(), "--profiles-dir"));
+    PortableRuntime::startCleanupWorker();
 
     ApplicationLogFile applicationLogFile(ApplicationPaths::logFile());
     ApplicationLogger applicationLogger;

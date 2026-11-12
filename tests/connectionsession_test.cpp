@@ -1,5 +1,6 @@
 #include <QCoreApplication>
 #include <QDebug>
+#include <QEventLoop>
 
 #include "application/connectionsession.h"
 
@@ -196,6 +197,76 @@ bool isolatesParallelSessions()
         && first.state() == ConnectionState::Disconnected && second.state() == ConnectionState::Running
         && firstCore->stopCalls == 1 && secondCore->stopCalls == 0;
 }
+
+bool intentionalStopIgnoresLateAuthenticationButKeepsLogs()
+{
+    auto *core = new FakeCoreProcess;
+    ConnectionSession session(core);
+    int prompts = 0;
+    int completions = 0;
+    ZJU_ERROR completion = ZJU_ERROR::OTHER;
+    QString output;
+    QObject::connect(&session, &ConnectionSession::ssoAuth, [&](const QString &) { ++prompts; });
+    QObject::connect(&session, &ConnectionSession::graphCaptcha, [&](const QString &) { ++prompts; });
+    QObject::connect(&session, &ConnectionSession::smsCode, [&](bool) { ++prompts; });
+    QObject::connect(&session, &ConnectionSession::radiusCode, [&](bool) { ++prompts; });
+    QObject::connect(&session, &ConnectionSession::totpCode, [&]() { ++prompts; });
+    QObject::connect(&session, &ConnectionSession::randCode, [&]() { ++prompts; });
+    QObject::connect(&session, &ConnectionSession::askSudoPass, [&]() { ++prompts; });
+    QObject::connect(&session, &ConnectionSession::outputRead, [&](const QString &text) { output = text; });
+    QObject::connect(&session, &ConnectionSession::finished, [&](ZJU_ERROR error) { ++completions; completion = error; });
+    session.start({}, {true, 1});
+    emit core->smsCode(false);
+    if (prompts != 1) return false;
+    core->establishConnection();
+    emit core->error(ZJU_ERROR::AUTH_EXPIRED, "in-flight expiry before user stop");
+    session.stop();
+    emit core->error(ZJU_ERROR::AUTH_EXPIRED, "invalid SID during shutdown");
+    emit core->outputRead("invalid SID during shutdown");
+    emit core->ssoAuth("https://office.example/login");
+    emit core->graphCaptcha("unused.png");
+    emit core->smsCode(false);
+    emit core->radiusCode(false);
+    emit core->totpCode();
+    emit core->randCode();
+    emit core->askSudoPass();
+    core->establishConnection();
+    emit core->httpProxyReadyChanged(true);
+    if (session.state() != ConnectionState::Stopping || session.isHttpProxyReady()) return false;
+    core->complete();
+    emit core->smsCode(false);
+    if (prompts != 1 || completions != 1 || completion != ZJU_ERROR::NONE
+        || !session.errorDetail().isEmpty() || session.state() != ConnectionState::Disconnected
+        || output != "invalid SID during shutdown")
+    {
+        qCritical() << "manual disconnect accepted a late auth prompt/error or dropped its diagnostic log";
+        return false;
+    }
+    session.start({}, {});
+    emit core->error(ZJU_ERROR::AUTH_EXPIRED, "real login expiry");
+    core->complete();
+    return completions == 2 && completion == ZJU_ERROR::AUTH_EXPIRED
+        && session.state() == ConnectionState::Failed && session.errorDetail() == "real login expiry";
+}
+
+bool cancellingReconnectDoesNotReportOldExpiryOrRestart()
+{
+    auto *core = new FakeCoreProcess;
+    ConnectionSession session(core);
+    ZJU_ERROR completion = ZJU_ERROR::OTHER;
+    QObject::connect(&session, &ConnectionSession::finished, [&](ZJU_ERROR error) { completion = error; });
+    session.start({}, {true, 20});
+    core->establishConnection();
+    emit core->error(ZJU_ERROR::AUTH_EXPIRED, "expiry before reconnect");
+    core->complete();
+    if (session.state() != ConnectionState::Reconnecting) return false;
+    session.stop();
+    QEventLoop loop;
+    QTimer::singleShot(60, &loop, &QEventLoop::quit);
+    loop.exec();
+    return completion == ZJU_ERROR::NONE && session.state() == ConnectionState::Disconnected
+        && session.errorDetail().isEmpty() && core->startCalls == 1;
+}
 }
 
 int main(int argc, char *argv[])
@@ -205,5 +276,7 @@ int main(int argc, char *argv[])
         && distinguishesInterruptedConnectionFromStartupFailure()
         && emptySudoPasswordStopsTheSession()
         && isolatesParallelSessions()
+        && intentionalStopIgnoresLateAuthenticationButKeepsLogs()
+        && cancellingReconnectDoesNotReportOldExpiryOrRestart()
         && cancelledInteractiveInputSubmitsNewlineBeforeStopping() ? 0 : 1;
 }
