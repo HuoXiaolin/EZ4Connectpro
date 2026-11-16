@@ -55,6 +55,7 @@ set(SOURCE_FILES
     infrastructure/coreprocess/consoleoutputdecoder.cpp
     infrastructure/coreprocess/coreexecutable.cpp
     infrastructure/coreprocess/devicetrust.cpp
+    presentation/dialogs/devicetrustdialog/devicetrustdialog.cpp
     infrastructure/coreprocess/coreoutputbuffer.cpp
     infrastructure/coreprocess/coreoutputparser.cpp
     infrastructure/browser/browserssosession.cpp
@@ -169,6 +170,16 @@ target_link_libraries(${PROJECT_NAME}
 include(CTest)
 
 if(BUILD_TESTING)
+    add_executable(devicetrust_test
+        tests/devicetrust_test.cpp
+        infrastructure/coreprocess/devicetrust.cpp
+        infrastructure/coreprocess/coreexecutable.cpp
+        infrastructure/storage/applicationpaths.cpp
+        presentation/dialogs/devicetrustdialog/devicetrustdialog.cpp
+        resource.qrc)
+    target_link_libraries(devicetrust_test Qt::Core Qt::Gui Qt::Widgets)
+    add_test(NAME devicetrust_test COMMAND devicetrust_test)
+
     if(WIN32)
         add_executable(windows_desktop_check scripts/windows-qa/desktop-check.cpp)
         target_link_libraries(windows_desktop_check gdiplus ws2_32 version)
@@ -188,7 +199,7 @@ if(BUILD_TESTING)
         set_target_properties(startupintegration_test startup_mock_core PROPERTIES
             RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/startup-qa")
         add_dependencies(startupintegration_test startup_mock_core)
-        foreach(scenario auto empty disabled conflict elevate denied shutdown)
+        foreach(scenario auto empty disabled conflict elevate denied shutdown devices)
             add_test(NAME startup_${scenario}_test COMMAND startupintegration_test --autostart --scenario ${scenario})
             set_tests_properties(startup_${scenario}_test PROPERTIES ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1")
         endforeach()

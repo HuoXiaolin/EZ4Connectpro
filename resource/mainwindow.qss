@@ -34,3 +34,11 @@ QScrollBar:vertical { background: transparent; width: 9px; margin: 2px; }
 QScrollBar::handle:vertical { border-radius: 3px; min-height: 24px; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; height: 0; }
+
+#deviceTrustDialog QLabel, #deviceTrustDialog QLineEdit, #deviceTrustDialog QTableWidget,
+#deviceTrustDialog QHeaderView, #deviceTrustDialog QPushButton { font-size: 14px; }
+#deviceTrustDialog #deviceTrustTitle { font-size: 20px; font-weight: 650; }
+#deviceTrustDialog QPushButton { border: 1px solid; border-radius: 6px; padding: 0 10px; }
+#deviceTrustTable { border: 1px solid; border-radius: 6px; }
+#deviceTrustTable QHeaderView::section { border: 0; border-bottom: 1px solid; padding: 5px 6px; }
+#deviceTrustIdentifier { border: 1px solid; border-radius: 5px; padding: 5px 6px; }

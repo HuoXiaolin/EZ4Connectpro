@@ -95,22 +95,23 @@ void MainWindow::setupWorkspace()
     auto *remove = profileActions->addAction("删除配置", this, &MainWindow::deleteCurrentProfile);
     profileActions->addSeparator();
     auto *clearCache = profileActions->addAction("清理登录缓存", this, &MainWindow::clearLoginCache);
-    auto *trust = profileActions->addAction("设为授信设备", this, [this]() { setDeviceTrust(true); });
-    auto *untrust = profileActions->addAction("取消授信设备", this, [this]() { setDeviceTrust(false); });
-    connect(profileActions, &QMenu::aboutToShow, this, [this, rename, remove, clearCache, trust, untrust]()
+    auto *devices = profileActions->addAction("授信设备管理…", this, &MainWindow::showDeviceManager);
+    devices->setObjectName("manageTrustedDevices");
+    connect(profileActions, &QMenu::aboutToShow, this, [this, rename, remove, clearCache, devices]()
     {
         const auto profile = profileService->currentVpnProfile();
         const bool managed = !profileService->usesOverrideConfiguration();
         const bool isATrust = profile.protocolId == "atrust";
+        const bool canChange = !selectedConnectionIsActive() && !quitting;
         rename->setVisible(managed);
+        rename->setEnabled(canChange);
         remove->setVisible(managed && !profile.id.isEmpty());
+        remove->setEnabled(canChange);
         clearCache->setVisible(isATrust);
         QFile cache(ApplicationPaths::clientDataFile(profile.id, false));
-        clearCache->setEnabled(isATrust && cache.exists());
-        const bool canManageTrust = isATrust && !profile.server.isEmpty() && cache.open(QIODevice::ReadOnly)
-            && !QJsonDocument::fromJson(cache.readAll()).object().value("cookies").toArray().isEmpty();
-        trust->setVisible(canManageTrust);
-        untrust->setVisible(canManageTrust);
+        clearCache->setEnabled(isATrust && cache.exists() && canChange);
+        devices->setVisible(isATrust);
+        devices->setEnabled(isATrust && !profile.server.isEmpty() && !quitting);
     });
     ui->profileActionsButton->setMenu(profileActions);
 
@@ -269,7 +270,7 @@ void MainWindow::updateConnectionState(ConnectionState state)
     ui->pushButton2->setText(ownsProxy && systemProxySession->isEnabled() ? "释放系统代理" : "设置系统代理");
     ui->settingPushButton->setEnabled(canEdit);
     ui->guidePushButton->setEnabled(canEdit);
-    ui->profileActionsButton->setEnabled(canEdit && (managed || profile.protocolId == "atrust"));
+    ui->profileActionsButton->setEnabled(!quitting && ((canEdit && managed) || profile.protocolId == "atrust"));
     ui->importConfigAction->setEnabled(!quitting);
     ui->exportConfigAction->setEnabled(supported && !quitting);
     refreshProperty(ui->routeProfileLabel, "stageActive", !authenticating && !running);

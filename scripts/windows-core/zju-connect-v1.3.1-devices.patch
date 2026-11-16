@@ -1,0 +1,71 @@
+--- a/init.go
++++ b/init.go
+@@ -35,6 +35,8 @@
+ 	AuthInfo      bool
+ 	TrustDevice   bool
+ 	UntrustDevice bool
++	DeviceAction string
++	DeviceRecordID string
+ }
+ 
+ type collectionKey string
+@@ -145,6 +147,8 @@
+ 	flags.Bool("auth-info", false, "Fetch aTrust authentication information, but do not login")
+ 	flags.Bool("trust-device", false, "Trust the current device for aTrust, but do not connect")
+ 	flags.Bool("untrust-device", false, "Untrust the current device for aTrust, but do not connect")
++	flags.String("device-action", "", "Manage aTrust devices: list, trust-self, untrust, replace-self")
++	flags.String("device-record-id", "", "Server record ID to untrust")
+ 	return flags
+ }
+ 
+@@ -159,12 +163,16 @@
+ 	authInfo, _ := flags.GetBool("auth-info")
+ 	trustDevice, _ := flags.GetBool("trust-device")
+ 	untrustDevice, _ := flags.GetBool("untrust-device")
++	deviceAction, _ := flags.GetString("device-action")
++	deviceRecordID, _ := flags.GetString("device-record-id")
+ 	configFile, _ := flags.GetString("config")
+ 	options := startupOptions{
+ 		ShowVersion:   showVersion,
+ 		AuthInfo:      authInfo,
+ 		TrustDevice:   trustDevice,
+ 		UntrustDevice: untrustDevice,
++		DeviceAction: deviceAction,
++		DeviceRecordID: deviceRecordID,
+ 	}
+ 	if options.ShowVersion {
+ 		return options, flags, nil
+@@ -338,7 +346,7 @@
+ 		}
+ 	}
+ 	switch name {
+-	case "config", "version", "auth-info", "trust-device", "untrust-device":
++	case "config", "version", "auth-info", "trust-device", "untrust-device", "device-action", "device-record-id":
+ 		return "", false
+ 	case "server":
+ 		return "server_address", true
+@@ -567,6 +575,24 @@
+ 		return 0
+ 	}
+ 
++	if options.DeviceAction != "" {
++		if conf.Protocol != "atrust" || conf.ClientDataFile == "" {
++			fmt.Fprintln(os.Stderr, "aTrust saved login required")
++			return 1
++		}
++		if options.DeviceAction != "list" && options.DeviceAction != "trust-self" && options.DeviceAction != "untrust" && options.DeviceAction != "replace-self" {
++			fmt.Fprintln(os.Stderr, "invalid device action")
++			return 1
++		}
++		log.SetOutput(io.Discard)
++		data, err := os.ReadFile(conf.ClientDataFile)
++		if err != nil { fmt.Fprintln(os.Stderr, "cannot read saved login"); return 1 }
++		result, err := atrust.ManageDevices(conf.ServerAddress, conf.ServerPort, data, options.DeviceAction, options.DeviceRecordID)
++		if err != nil { fmt.Fprintln(os.Stderr, err); return 1 }
++		fmt.Println(string(result))
++		return 0
++	}
++
+ 	if options.TrustDevice || options.UntrustDevice {
+ 		if conf.Protocol != "atrust" {
+ 			fmt.Fprintln(os.Stderr, "Trust/Untrust device is only supported by the atrust protocol")

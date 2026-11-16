@@ -3,7 +3,8 @@ param(
     [string]$Architecture = "amd64",
     [Parameter(Mandatory)]
     [string]$OutputDir,
-    [string]$VersionResource
+    [string]$VersionResource,
+    [switch]$TestDeviceManagement
 )
 
 $ErrorActionPreference = "Stop"
@@ -37,6 +38,14 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "Could not apply the Windows TUN patch to zju-connect v1.3.1"
     }
+    & git.exe -C $source apply --whitespace=error (Join-Path $PSScriptRoot "windows-core/zju-connect-v1.3.1-devices.patch")
+    if ($LASTEXITCODE -ne 0) { throw "Could not apply the aTrust device-management patch" }
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'windows-core/device_management.go') -Destination (Join-Path $source 'client/atrust/ez4_device_management.go')
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'windows-core/device_list.go') -Destination (Join-Path $source 'client/atrust/auth/ez4_device_list.go')
+    if ($TestDeviceManagement) {
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'windows-core/device_management_test.go') -Destination (Join-Path $source 'client/atrust/ez4_device_management_test.go')
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'windows-core/device_list_test.go') -Destination (Join-Path $source 'client/atrust/auth/ez4_device_list_test.go')
+    }
 
     $env:GOOS = "windows"
     $env:GOARCH = $Architecture
@@ -48,6 +57,10 @@ try {
     }
     Push-Location $source
     try {
+        if ($TestDeviceManagement) {
+            & $go test -mod=readonly -count=1 -run '^TestEZ4' ./client/atrust ./client/atrust/auth
+            if ($LASTEXITCODE -ne 0) { throw 'aTrust device management tests failed' }
+        }
         & $go build -mod=readonly -trimpath -buildvcs=false -ldflags "-s -w -X main.zjuConnectVersion=v1.3.1 -X main.CommitID=ez4tun1" `
             -o (Join-Path $output "zju-connect.exe") .
         if ($LASTEXITCODE -ne 0) {

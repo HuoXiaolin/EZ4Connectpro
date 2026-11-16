@@ -3,6 +3,12 @@
 #include <QCheckBox>
 #include <QDialogButtonBox>
 #include <QDir>
+#include <QEventLoop>
+#include <QFile>
+#include <QLabel>
+#include <QMenu>
+#include <QProcess>
+#include <QTableWidget>
 #include <QListWidget>
 #include <QMessageBox>
 #include <QPushButton>
@@ -117,7 +123,7 @@ int main(int argc, char **argv)
     QObject::connect(&poll, &QTimer::timeout, [&]()
     {
         ++ticks;
-        if (auto *message = qobject_cast<QMessageBox *>(QApplication::activeModalWidget()))
+        if (auto *message = qobject_cast<QMessageBox *>(QApplication::activeModalWidget()); message && scenario != "devices")
         {
             if (scenario != "conflict" || message->windowTitle() != "无法启动配置") qFatal("Unexpected startup dialog");
             ++conflictDialogs;
@@ -152,6 +158,57 @@ int main(int argc, char **argv)
         }
         if (storage.activeProfile() != "manual" || ready("manual")) qFatal("Startup changed or connected the unrelated selected profile");
         verified = true;
+        if (scenario == "devices")
+        {
+            auto *list=window.findChild<QListWidget *>("profileList");
+            if(!list)qFatal("Workspace profile list missing");
+            for (int i = 0; i < list->count(); ++i)
+            {
+                if (list->item(i)->data(Qt::UserRole).toString() != "office") continue;
+                list->setCurrentRow(i);
+                emit list->itemClicked(list->item(i));
+                break;
+            }
+            // Workspace selection is queued to avoid rebuilding the list in its
+            // click handler. Wait for that real user action before opening its menu.
+            QEventLoop selection;
+            QTimer::singleShot(0, &selection, &QEventLoop::quit);
+            selection.exec();
+            if (storage.activeProfile() != "office") qFatal("Connected profile was not selected");
+            auto *button=window.findChild<QPushButton *>("profileActionsButton");
+            auto *action=window.findChild<QAction *>("manageTrustedDevices");
+            if(!button || !button->isEnabled() || !button->menu() || !action)qFatal("Device management blocked while connected");
+            QMetaObject::invokeMethod(button->menu(),"aboutToShow",Qt::DirectConnection);
+            if(!action->isEnabled())qFatal("Connected device management action disabled");
+            for(auto *entry:button->menu()->actions())if(!entry->isSeparator() && entry!=action && entry->isEnabled())qFatal("Destructive profile action enabled while connected");
+            QFile cache(ApplicationPaths::clientDataFile("office",true));
+            if(!cache.open(QIODevice::WriteOnly|QIODevice::Truncate))qFatal("Could not write mock device data");
+            cache.write(R"({"selfId":"this-computer","deviceTrusted":false,"currentTrustDeviceCount":2,"trustDeviceConfig":{"enable":true,"enableSelfBind":1,"limit":2},"data":[{"id":"retired-desktop","deviceName":"Retired desktop"},{"id":"travel-notebook","deviceName":"Retained notebook"}]})");cache.close();
+            QList<QPair<QProcess *,qint64>> cores;
+            for(const auto &id: {QString{},QString("office")}) {
+                auto *core=coordinator->connectionFor(storage.profilePath(id))->session->findChild<QProcess *>();
+                if(!core || !core->processId())qFatal("Active VPN core missing");
+                cores.append({core,core->processId()});
+            }
+            int phase=0;
+            QTimer devicePoll;devicePoll.setInterval(20);
+            QObject::connect(&devicePoll,&QTimer::timeout,[&]{
+                auto *dialog=window.findChild<QDialog *>("deviceTrustDialog");if(!dialog)return;
+                auto *table=dialog->findChild<QTableWidget *>("deviceTrustTable");
+                auto *status=dialog->findChild<QLabel *>("deviceTrustStatus");
+                if(phase==0 && table && table->rowCount()==2) {
+                    phase=1;table->selectRow(0);
+                    QTimer::singleShot(0,dialog,[dialog]{auto *confirm=dialog->findChild<QMessageBox *>("deviceTrustConfirmation");if(!confirm)qFatal("Connected replacement confirmation missing");confirm->button(QMessageBox::Yes)->click();});
+                    dialog->findChild<QPushButton *>("deviceTrustUnbind")->click();
+                } else if(phase==1 && status && status->text().contains("换绑已完成")) {
+                    if(!ready({}) || !ready("office"))qFatal("Device management interrupted VPN sessions");
+                    for(const auto &entry:cores)if(entry.first->state()!=QProcess::Running || entry.first->processId()!=entry.second)qFatal("VPN core stopped or restarted during device management");
+                    phase=2;devicePoll.stop();dialog->reject();
+                }
+            });
+            devicePoll.start();action->trigger();
+            if(phase!=2)qFatal("Connected device replacement flow incomplete");
+        }
         if (scenario == "shutdown")
         {
             for (const QString id : {QString{}, QString("office")})

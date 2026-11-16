@@ -37,3 +37,12 @@ QMenu { background: #232d34; border-color: #3c4d57; }
 #controlDivider { background: #364750; }
 #logPlainTextEdit { background: #1a2329; border-color: #394a54; color: #d2e0e7; selection-background-color: #365e72; }
 QScrollBar::handle:vertical { background: #526a78; }
+
+#deviceTrustDialog, #deviceTrustConfirmation { background: #222b32; }
+#deviceTrustTable, #deviceTrustIdentifier { background: #1a2329; color: #e3ebef; border-color: #455762; selection-color: #edf4f7; selection-background-color: #344d5b; }
+#deviceTrustTable QHeaderView::section { background: #29363e; color: #e3ebef; border-color: #455762; }
+#deviceTrustTable QTableCornerButton::section { background: #29363e; }
+#deviceTrustDialog QPushButton { background: #29363e; color: #e3ebef; border-color: #607782; }
+#deviceTrustDialog QPushButton:hover { background: #354650; }
+#deviceTrustDialog QPushButton:focus, #deviceTrustIdentifier:focus { border-color: #79cbec; }
+#deviceTrustDialog QPushButton:disabled { background: #263139; color: #91a5b1; border-color: #3b4b54; }

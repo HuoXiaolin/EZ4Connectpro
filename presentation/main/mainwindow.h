@@ -107,7 +107,7 @@ private:
 
     void clearLoginCache();
 
-    void setDeviceTrust(bool trusted);
+    void showDeviceManager();
 
     void gracefullyQuit();
 

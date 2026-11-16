@@ -30,7 +30,7 @@
 #include "application/applicationconstants.h"
 #include "application/commandlineoptions.h"
 #include "application/settingsmigrator.h"
-#include "infrastructure/coreprocess/devicetrust.h"
+#include "presentation/dialogs/devicetrustdialog/devicetrustdialog.h"
 #include "infrastructure/logging/applicationlogfile.h"
 #include "infrastructure/settings/profilemanager.h"
 #include "infrastructure/storage/applicationpaths.h"
@@ -673,26 +673,15 @@ void MainWindow::clearLoginCache()
     qInfo().noquote() << "已清理「" + profile.name + "」的登录缓存";
 }
 
-void MainWindow::setDeviceTrust(bool trusted)
+void MainWindow::showDeviceManager()
 {
     const auto profile = profileService->currentVpnProfile();
-    if (profile.protocolId != "atrust" || profile.server.isEmpty() || selectedConnectionIsActive())
+    if (profile.protocolId != "atrust" || profile.server.isEmpty() || quitting)
     {
         return;
     }
-    const QString action = trusted ? QStringLiteral("设为授信设备") : QStringLiteral("取消授信设备");
-    try
-    {
-        DeviceTrust::set(this, profile.protocolId, profile.server, profile.port, profile.id, trusted);
-        qInfo().noquote() << action + "成功";
-        QMessageBox::information(this, action, "操作成功。");
-    }
-    catch (const std::runtime_error &error)
-    {
-        const QString detail = QString::fromLocal8Bit(error.what());
-        qWarning().noquote() << action + "失败" << detail;
-        QMessageBox::warning(this, action, detail);
-    }
+    DeviceTrustDialog dialog(profile, this);
+    dialog.exec();
 }
 
 void MainWindow::upgradeSettings(bool interactive)

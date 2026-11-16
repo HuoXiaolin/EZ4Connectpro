@@ -66,6 +66,8 @@ try {
             & go.exe test -count=1 .
             if ($LASTEXITCODE -ne 0) { throw 'Portable runtime cleanup safety tests failed' }
         } finally { Pop-Location }
+        $deviceTests = (New-Item -ItemType Directory -Path (Join-Path $repoRoot 'build/device-management') -Force).FullName
+        & (Join-Path $PSScriptRoot 'build-windows-core.ps1') -OutputDir $deviceTests -TestDeviceManagement
     }
     if ($Package) {
         & (Join-Path $PSScriptRoot "package-windows-single-file.ps1") -BuildDir $BuildDir

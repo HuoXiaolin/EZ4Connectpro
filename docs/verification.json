@@ -1,16 +1,16 @@
 {
   "version": "2.0.1",
-  "date": "2026-11-12",
+  "date": "2026-11-16",
   "platform": "Windows x64",
   "artifact": "EZ4Connectpro-windows-x64.exe",
-  "artifact_bytes": 28450816,
-  "sha256": "8a35e3c1115c34d5e02857befac000067ef6933349c9a0ccce4564f3a9e2c567",
-  "runtime_payload_bytes": 59395917,
+  "artifact_bytes": 28486144,
+  "sha256": "67fe06b562d0c499a44b413fd4ee1dbf3e164370ff6656e392132d0d7e142a0e",
+  "runtime_payload_bytes": 59508616,
   "ctest": {
     "passed": 26,
     "failed": 0,
     "seconds": 4.23,
-    "stage": "Previous full suite after intentional-shutdown authentication fix, before close-to-tray policy change; no unrelated rerun for the close policy"
+    "stage": "Historical full suite before close-to-tray policy and device management changes; targeted checks below were run for this delivery"
   },
   "final_startup_tray_regression": {
     "passed": 9,
@@ -63,30 +63,31 @@
     "file_version": "2.0.1",
     "product_version": "2.0.1",
     "webengine_qml_quick_dependencies": false,
-    "successful_packages_after_multi_startup_change": 6,
-    "final_smoke_seconds": 5.15,
+    "successful_packages_after_multi_startup_change": 8,
+    "final_smoke_seconds": 5.37,
     "previous_build_test_package_seconds": 157.83,
-    "final_build_package_seconds": null,
-    "timing_note": "Final close-policy build/package completed; its command timing was not retained. Native packaged smoke timing is measured."
+    "final_build_package_seconds": 8.41,
+    "timing_note": "Current device replacement and connected-management delivery: C++ build 157.41 seconds; final package 8.41 seconds; packaged EXE smoke 5.37 seconds. Targeted tests measured separately.",
+    "embedded_zip_crc": "passed",
+    "packaged_device_command": "passed: packaged replace-self command rejects missing saved login before network",
+    "cpp_build_seconds": 157.41
   },
   "desktop": "Independent WinSta0 desktop; input desktop unchanged",
-  "scope": "Local and simulated checks only. Real Windows logon, live VPN gateway, TUN hardware and connected-core crash cleanup were not exercised.",
+  "scope": "Current delivery: full-quota replacement and device management while connected, tested with mock servers and two active mock VPN cores. Live policy and device list queried read-only. No real bind/unbind, Windows logon or TUN hardware acceptance was performed.",
   "tools": "D:\\Agant\\toolchain\\EZ4Connectpro",
   "source_delivery": "D:\\Agant\\Github_Source\\EZ4Connectpro",
   "binary_delivery": "D:\\Agant\\Github_Releases\\EZ4Connectpro\\EZ4Connectpro-windows-x64.exe",
   "delivery": {
-    "source_files": 185,
-    "sync_seconds": 0.7,
+    "source_files": 195,
+    "sync_seconds": 1.28,
     "sha256_verified": true,
     "only_latest_exe": true
   },
   "cleanup": {
-    "final_removed_bytes": 283721303,
-    "final_seconds": 5.6,
-    "earlier_removed_bytes": 1712955656,
+    "final_removed_bytes": 536679823,
+    "final_seconds": 6.21,
     "shared_tools_and_module_dependencies_preserved": true,
-    "build_directory_removed": true,
-    "previous_final_removed_bytes": 399596038
+    "build_directory_removed": true
   },
   "shutdown_authentication_fix": {
     "reproduced_before_fix": "Both session/state regression executables failed as expected",
@@ -102,8 +103,103 @@
     "tray_exit_ends_application": "passed; exit code 0 and no remaining QA child processes",
     "runtime_directory_removed_after_exit": "passed",
     "input_desktop_unchanged": true,
-    "native_smoke_attempts": 2,
-    "initial_attempt": "Close and restore passed; native helper keyboard activation of Exit did not work on the isolated desktop. Helper changed to mouse messages; final check passed.",
+    "native_smoke_attempts": 1,
+    "initial_attempt": "Current packaged EXE passed on its first native smoke run; historical helper adjustment occurred in a previous delivery.",
     "scope": "Idle close policy changed; connected close already hid to tray and uses the same unconditional hide path."
+  },
+  "device_management": {
+    "entry": "aTrust profile -> More actions -> Trusted device management; available while connected without stopping or restarting its VPN core",
+    "live_gateway": {
+      "trusted_device_listing": "passed read-only",
+      "trusted_devices_returned": 3,
+      "current_device_trusted": false,
+      "self_bind_allowed": true,
+      "trusted_device_limit": 3,
+      "trusted_device_count": 3,
+      "actual_device_mutations": 0,
+      "private_device_identifiers_saved_to_repository": false
+    },
+    "replacement_contract": {
+      "verified_against": "Gateway public portal JavaScript for full-quota replacement and device management",
+      "action": "replace-self",
+      "endpoint": "POST /passport/v1/security/trustDevice",
+      "payload": "untrustIdList containing only the confirmed old device ID",
+      "plain_unbind_fallback": false,
+      "verification": "Refresh and confirm old record absent and current terminal trusted; report partial or unchanged state without claiming success"
+    },
+    "go_tests": {
+      "test_functions": 4,
+      "action_cases": 11,
+      "query_cases": 6,
+      "mutation_payload_cases": 6,
+      "mutation_response_cases": 5,
+      "passed": true,
+      "checks": "Fresh membership and quota/policy; current identity from authenticated session; exact POST endpoint/CSRF/idList or untrustIdList; rejection without retry; extra authentication not treated as success; malformed and oversized replies"
+    },
+    "native_ui": {
+      "light_and_dark_passed": true,
+      "light_seconds": 7.28,
+      "dark_seconds": 3.01,
+      "window_sizes_logical": [
+        [
+          850,
+          450
+        ],
+        [
+          680,
+          400
+        ]
+      ],
+      "capture_sizes_pixels": [
+        [
+          1063,
+          563
+        ],
+        [
+          850,
+          500
+        ],
+        [
+          1594,
+          844
+        ],
+        [
+          1275,
+          750
+        ]
+      ],
+      "checks": [
+        "full-quota replacement action and explicit two-effect confirmation",
+        "cancel performs no mutation",
+        "replacement is one request for selected old device",
+        "ordinary unbind from a trusted current terminal",
+        "normal add with available quota",
+        "refresh verifies actual server state",
+        "partial, unchanged and rejected replacement are not reported as complete",
+        "expired login, malformed or oversized data and timeout",
+        "cache removed between requests settles without retry loop",
+        "no raw private error output"
+      ],
+      "visual_review": "Light, dark and minimum-size captures reviewed; controls and confirmation readable; synthetic devices only"
+    },
+    "connected_integration": {
+      "passed": true,
+      "active_lines": 2,
+      "core_pids_unchanged": true,
+      "both_sessions_remained_ready": true,
+      "rename_delete_and_clear_cache_still_disabled": true,
+      "scope": "Real MainWindow action and device-management subprocess, mock VPN cores and device server state; no real gateway mutation"
+    },
+    "integration_regression": {
+      "passed": 3,
+      "failed": 0,
+      "seconds": 6.15,
+      "startup_devices_seconds": 2.93,
+      "startup_shutdown_seconds": 2.44,
+      "startup_ui_seconds": 0.76,
+      "initial_attempt": "Test initially changed the list highlight without invoking the queued profile-click handler; corrected to exercise the real selection action, then all targeted checks passed"
+    },
+    "server_limits": "Quota, self-service and approval policies remain enforced; additional-authentication continuation is not implemented in this dialog",
+    "sample_screenshot": "docs/devices.png (synthetic devices only)"
   }
 }

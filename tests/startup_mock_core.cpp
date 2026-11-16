@@ -1,4 +1,8 @@
 #include <QCoreApplication>
+#include <QFile>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTimer>
@@ -18,6 +22,22 @@ int main(int argc, char **argv)
         const int index = args.indexOf(option);
         return index > 0 && index + 1 < args.size() ? args[index + 1] : QString{};
     };
+    if (args.contains("-device-action"))
+    {
+        QFile cache(address("-client-data-file"));
+        if (!cache.open(QIODevice::ReadOnly)) return 3;
+        auto data=QJsonDocument::fromJson(cache.readAll()).object();cache.close();
+        const auto action=address("-device-action");
+        if (action=="list") {std::puts(QJsonDocument(data).toJson(QJsonDocument::Compact).constData());return 0;}
+        if (action!="replace-self" || address("-device-record-id")!="retired-desktop") return 4;
+        auto rows=data.value("data").toArray();
+        for (int i=rows.size()-1;i>=0;--i) if(rows[i].toObject().value("id").toString()=="retired-desktop")rows.removeAt(i);
+        rows.append(QJsonObject{{"id","this-computer"},{"deviceName","Current device"}});
+        data.insert("data",rows);data.insert("deviceTrusted",true);
+        if(!cache.open(QIODevice::WriteOnly|QIODevice::Truncate))return 5;
+        cache.write(QJsonDocument(data).toJson(QJsonDocument::Compact));cache.close();
+        std::puts("{\"changed\":true}");return 0;
+    }
     QTcpServer socks;
     QTcpServer http;
     const QString socksAddress = address("-socks-bind");
