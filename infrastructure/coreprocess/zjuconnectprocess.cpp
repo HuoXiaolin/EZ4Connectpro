@@ -227,6 +227,9 @@ void ZjuConnectProcess::processOutputLines(const QList<QByteArray> &lines)
         case CoreOutputEvent::ClientFailed:
             emit error(ZJU_ERROR::CLIENT_FAILED);
             break;
+        case CoreOutputEvent::EnvironmentSignatureFailed:
+            emit error(ZJU_ERROR::ENV_SIGNATURE_FAILED);
+            break;
         case CoreOutputEvent::CorePanic:
             emit error(ZJU_ERROR::OTHER);
             break;

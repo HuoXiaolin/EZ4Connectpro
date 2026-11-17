@@ -361,7 +361,10 @@ void ConnectionUiController::showConnectionError(ZJU_ERROR error)
         message += "\n\n完整的网卡错误可在活动日志中查看。";
         break;
     case ZJU_ERROR::CLIENT_FAILED:
-        message = "连接失败！\n可能是响应超时，请检查本地网络配置是否正常，服务器设置是否正确。";
+        message = "连接核心启动失败。\n请查看活动日志中的具体错误。";
+        break;
+    case ZJU_ERROR::ENV_SIGNATURE_FAILED:
+        message = "服务器拒绝了设备环境上报：接口签名校验失败（10000008）。\n请使用修复此问题的版本；若仍失败，请保留活动日志以核对客户端与网关的兼容性。";
         break;
     case ZJU_ERROR::CAPTCHA_FAILED:
         message = "登录失败！\n验证码问题，可能是已验证码过期或者有误。";

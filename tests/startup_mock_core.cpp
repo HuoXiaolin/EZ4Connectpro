@@ -17,6 +17,13 @@ int main(int argc, char **argv)
         std::puts("ZJU Connect v1.3.1-ez4tun1");
         return 0;
     }
+    if (qEnvironmentVariableIsSet("EZ4_QA_SIGNATURE_FAILURE"))
+    {
+        std::puts("reportEnv failed with code 10000008: interface sig verify failed");
+        std::puts("Login error: reportEnv failed with code 10000008");
+        std::puts("VPN client setup error: reportEnv failed with code 10000008");
+        return 1;
+    }
     const auto address = [&args](const QString &option)
     {
         const int index = args.indexOf(option);

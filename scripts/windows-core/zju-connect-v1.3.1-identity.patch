@@ -1,0 +1,41 @@
+--- a/client/atrust/auth/auth.go
++++ b/client/atrust/auth/auth.go
+@@ -140,6 +140,7 @@
+ }
+ 
+ type LoginOptions struct {
++	ReportDeviceMetadata bool
+ 	DeviceID   string
+ 	Cookies    []Cookie
+ 	TOTPSecret string
+@@ -333,6 +334,9 @@
+ 		if err != nil {
+ 			return LoginResult{}, err
+ 		}
++		if opts.ReportDeviceMetadata {
++			s.updateDeviceMetadata()
++		}
+ 		sid, cookies := sessionCookies(s)
+ 		return LoginResult{
+ 			Username: username,
+@@ -377,6 +381,10 @@
+ 		return LoginResult{}, err
+ 	}
+ 
++	if opts.ReportDeviceMetadata {
++		s.updateDeviceMetadata()
++	}
++
+ 	sid, cookies := sessionCookies(s)
+ 	return LoginResult{
+ 		Username: username,
+--- a/client/atrust/client.go
++++ b/client/atrust/client.go
+@@ -370,6 +370,7 @@
+ 		}
+ 
+ 		loginResult, err := sess.Login(options.LoginMethod, auth.LoginOptions{
++			ReportDeviceMetadata: true,
+ 			DeviceID:   c.DeviceID,
+ 			Cookies:    clientAuthData.Cookies,
+ 			TOTPSecret: options.TOTPSecret,

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.12)
-project(EZ4Connectpro VERSION 2.0.1)
+project(EZ4Connectpro VERSION 2.1.0)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_AUTOMOC ON)
@@ -60,6 +60,7 @@ set(SOURCE_FILES
     infrastructure/coreprocess/coreoutputparser.cpp
     infrastructure/browser/browserssosession.cpp
     infrastructure/browser/temporarybrowserssosession.cpp
+    infrastructure/browser/browserlogincache.cpp
     core/connectionsessionstate.cpp
     infrastructure/logging/applicationlogfile.cpp
     infrastructure/platform/autostart.cpp
@@ -121,7 +122,7 @@ if (WIN32)
         ${CMAKE_CURRENT_BINARY_DIR}/EZ4Connectpro.rc
     )
 
-    set(PLATFORM_LIBS wininet shell32 shlwapi cfgmgr32)
+    set(PLATFORM_LIBS wininet shell32 shlwapi cfgmgr32 crypt32)
 elseif(APPLE)
     message("Building for MacOS")
     
@@ -199,7 +200,7 @@ if(BUILD_TESTING)
         set_target_properties(startupintegration_test startup_mock_core PROPERTIES
             RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/startup-qa")
         add_dependencies(startupintegration_test startup_mock_core)
-        foreach(scenario auto empty disabled conflict elevate denied shutdown devices)
+        foreach(scenario auto empty disabled conflict elevate denied shutdown devices resources signature)
             add_test(NAME startup_${scenario}_test COMMAND startupintegration_test --autostart --scenario ${scenario})
             set_tests_properties(startup_${scenario}_test PROPERTIES ENVIRONMENT "QT_FORCE_STDERR_LOGGING=1")
         endforeach()
@@ -255,6 +256,8 @@ if(BUILD_TESTING)
         tests/browserssosession_test.cpp
         infrastructure/browser/browserssosession.cpp
         infrastructure/browser/temporarybrowserssosession.cpp
+        infrastructure/browser/browserlogincache.cpp
+        infrastructure/storage/applicationpaths.cpp
     )
     target_link_libraries(browserssosession_test Qt::Core Qt::Network Qt::WebSockets ${PLATFORM_LIBS})
     add_test(NAME browserssosession_test COMMAND browserssosession_test)
@@ -344,6 +347,7 @@ if(BUILD_TESTING)
         presentation/dialogs/authinfowindow/authinfowindow.cpp
         infrastructure/coreprocess/consoleoutputdecoder.cpp
         infrastructure/coreprocess/coreexecutable.cpp
+        infrastructure/storage/applicationpaths.cpp
     )
     target_include_directories(configurationguidedialog_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(configurationguidedialog_test

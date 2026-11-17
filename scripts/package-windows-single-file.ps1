@@ -31,7 +31,9 @@ try {
     }
 
     Compress-Archive -Path (Join-Path $runtime "*") -DestinationPath (Join-Path $work "payload.zip") -CompressionLevel Optimal
-    Copy-Item -LiteralPath (Join-Path $PSScriptRoot "windows-portable/main.go") -Destination $work
+    Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'windows-portable') -Filter '*.go' |
+        Where-Object { $_.Name -notlike '*_test.go' } |
+        ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination $work }
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "windows-portable/go.mod") -Destination $work
 
     & $windres.Source --input-format=rc --output-format=coff --target=pe-x86-64 $resource (Join-Path $work "launcher.syso")

@@ -11,7 +11,8 @@ $known = @(
     'browser-smoke', 'browser-smoke-chrome', 'browser-smoke-default', 'browser-smoke-unrestricted', 'browser-smoke-zen',
     'desktop-qa', 'go-cache', 'go-path', 'multi-tun-core-work', 'portable-work', 'references', 'release-candidate',
     'taste', 'tray-integration', 'tray-verification', 'portable-final-check', 'windows-core-work', 'device-management',
-    'windows-x64', 'windows-x64-final', 'windows-portable-tests', 'ez4connectpro-workspace-x64.exe', 'portable-candidate.exe'
+    'windows-x64', 'windows-x64-final', 'windows-portable-tests', 'ez4connectpro-workspace-x64.exe', 'portable-candidate.exe',
+    'core-dev', 'core-before', 'core-test-output'
 )
 $items = @(Get-ChildItem -LiteralPath $build -Force | Where-Object {
     $_.Name -in $known -or $_.Name -match '^portable-smoke-[0-9a-f]{32}$'

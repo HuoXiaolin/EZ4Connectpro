@@ -161,9 +161,26 @@ bool testProcessTree(HWND app, HANDLE bootstrap, const wchar_t *launcher) {
         CloseHandle(snapshot);
     }
     const auto appPath = processImage(appPid);
-    const auto corePath = appPath.substr(0, appPath.find_last_of(L"\\/")) + L"\\zju-connect.exe";
+    const auto adjacentCore = appPath.substr(0, appPath.find_last_of(L"\\/")) + L"\\zju-connect.exe";
+    wchar_t localData[32768]{};
+    GetEnvironmentVariableW(L"LOCALAPPDATA", localData, 32768);
+    const auto coreBase = std::wstring(localData) + L"\\EZ4Connectpro\\cores\\";
+    std::wstring corePath;
+    int cachedCores = 0;
+    WIN32_FIND_DATAW found{};
+    HANDLE search = FindFirstFileW((coreBase + L"core-*").c_str(), &found);
+    if (search != INVALID_HANDLE_VALUE) {
+        do {
+            if (found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+                corePath = coreBase + found.cFileName + L"\\zju-connect.exe";
+                ++cachedCores;
+            }
+        } while (FindNextFileW(search, &found));
+        FindClose(search);
+    }
     const bool roles = description(appPath) == L"EZ4Connectpro" &&
         description(launcher) == L"EZ4Connectpro \u00b7 \u8fd0\u884c\u6587\u4ef6\u7ba1\u7406" &&
+        cachedCores == 1 && GetFileAttributesW(adjacentCore.c_str()) == INVALID_FILE_ATTRIBUTES &&
         description(corePath) == L"EZ4Connectpro \u00b7 VPN \u8fde\u63a5\u6838\u5fc3";
     std::printf("Process ownership: bootstrap-exited=%d UI-pid=%lu cleanup-direct-children=%d functional-metadata=%d\n",
         bootstrapExited, appPid, workers, roles);

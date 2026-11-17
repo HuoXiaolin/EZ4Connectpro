@@ -36,6 +36,18 @@ async function authorize() {
 
     const permission = {origins: [gateway.protocol + "//" + gateway.hostname + "/*"]};
     const openLogin = async () => {
+        const returned = begin.replace(/\/begin$/, "/return");
+        if (metadata.resourceOnly === true) {
+            if (login.origin !== gateway.origin || login.pathname !== "/portal/" || login.search || login.hash) {
+                throw new Error("Invalid resource page");
+            }
+            await rules.updateSessionRules({removeRuleIds: [tabId]});
+            await extension.storage.session.set({["portal-" + tabId]: {
+                returned, gateway: gateway.origin, expires: Date.now() + 90 * 1000
+            }});
+            location.replace(returned);
+            return;
+        }
         const escapedOrigin = gateway.origin.replace(/[.*+?^\${}()|[\]\\]/g, "\\$&");
         const callback = "/passport/v1/auth/(?:cas\\?(?:[^#]*&)?ticket=|httpsOauth2\\?(?:[^#]*&)?code=)";
         const redirect = begin.replace(/\/begin$/, "/return") + "#\\0";
@@ -55,13 +67,18 @@ async function authorize() {
             }]
         });
         await extension.alarms.create("sso-" + tabId, {delayInMinutes: 5});
+        await extension.storage.session.set({["portal-" + tabId]: {
+            returned: begin.replace(/\/begin$/, "/return"), gateway: gateway.origin, expires: Date.now() + 7 * 60 * 1000
+        }});
         location.replace(login.href);
     };
     if (await extension.permissions.contains(permission)) {
         await openLogin();
         return;
     }
-    statusLine.textContent = "允许回传扩展读取此标签页发往 " + gateway.host + " 的登录回跳。";
+    statusLine.textContent = metadata.resourceOnly
+        ? "允许扩展为 " + gateway.host + " 恢复当前线路的资源页会话。"
+        : "允许回传扩展读取此标签页发往 " + gateway.host + " 的登录回跳。";
     allowButton.hidden = false;
     allowButton.addEventListener("click", async () => {
         allowButton.disabled = true;
@@ -80,7 +97,7 @@ async function authorize() {
 }
 
 function showFailure(error) {
-    statusLine.textContent = "无法接回这次登录的票据。请回到工作台重新连接。";
+    statusLine.textContent = "无法打开这次浏览器会话。请回到工作台重试。";
     statusLine.title = error?.message || "";
 }
 

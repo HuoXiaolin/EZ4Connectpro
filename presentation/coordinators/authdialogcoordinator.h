@@ -10,6 +10,8 @@ class QDialog;
 class QSettings;
 class SudoWindow;
 class QWidget;
+class TemporaryBrowserSsoSession;
+class BrowserSsoSession;
 
 class AuthDialogCoordinator : public QObject
 {
@@ -19,7 +21,8 @@ public:
     explicit AuthDialogCoordinator(
         QWidget *parentWidget,
         QSettings *settings,
-        QObject *parent = nullptr
+        QObject *parent = nullptr,
+        const QString &profileId = {}
     );
 
     void requestLogin(const QString &username, const QString &password);
@@ -34,6 +37,8 @@ public:
     void requestRadiusCode(bool showSkipSecondaryAuthOption);
     void requestSsoLogin(const QString &loginUrl);
     void dismissSsoLogin();
+    void openResources();
+    void openResourcePage();
 
 signals:
     void loginSubmitted(const QString &username, const QString &password, bool saveDetails);
@@ -50,11 +55,16 @@ private:
     QString dialogTitle(const QString &title) const;
     QWidget *parentWidget;
     QSettings *settings;
+    QString profileId;
     QPointer<LoginWindow> loginWindow;
     QPointer<QDialog> phoneNumberDialog;
     QPointer<SudoWindow> sudoWindow;
     QPointer<GraphCaptchaWindow> graphCaptchaWindow;
     QPointer<QDialog> ssoLoginDialog;
+    QPointer<TemporaryBrowserSsoSession> pendingResourceBrowser;
+    QPointer<BrowserSsoSession> pendingResourceBridge;
+    QPointer<TemporaryBrowserSsoSession> resourceBrowser;
+    QPointer<BrowserSsoSession> resourceBridge;
 };
 
 #endif // AUTHDIALOGCOORDINATOR_H

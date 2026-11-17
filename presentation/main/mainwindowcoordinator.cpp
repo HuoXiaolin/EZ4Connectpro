@@ -66,7 +66,7 @@ ProfileConnection *MainWindowCoordinator::createConnection(const VpnProfile &pro
     runtime->profileId = profile.id;
     runtime->settings = new QSettings(profile.settingsPath, QSettings::IniFormat, runtime);
     runtime->session = new ConnectionSession(new ZjuConnectProcess(), runtime);
-    runtime->auth = new AuthDialogCoordinator(parentWidget, runtime->settings, runtime);
+    runtime->auth = new AuthDialogCoordinator(parentWidget, runtime->settings, runtime, profile.id);
     connections.insert(key, runtime);
 
     auto *session = runtime->session;
@@ -87,6 +87,7 @@ ProfileConnection *MainWindowCoordinator::createConnection(const VpnProfile &pro
         {
             systemProxySession->releaseFor(runtime->settings->fileName());
         }
+        else auth->openResources();
         if (state == ConnectionState::Stopping || state == ConnectionState::Reconnecting)
         {
             auth->dismissSsoLogin();

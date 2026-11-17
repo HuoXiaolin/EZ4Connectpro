@@ -45,6 +45,15 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	base, err := coreCacheBase()
+	if err != nil {
+		return err
+	}
+	core, releaseCore, err := prepareCoreCache(archive, base)
+	if err != nil {
+		return err
+	}
+	defer releaseCore()
 	runtime, err := os.MkdirTemp("", "EZ4Connectpro-")
 	if err != nil {
 		return err
@@ -57,12 +66,16 @@ func run() error {
 	}()
 
 	for _, file := range archive.File {
+		if isCoreFile(file.Name) {
+			continue
+		}
 		if err := unpack(file, runtime); err != nil {
 			return err
 		}
 	}
 	app := exec.Command(filepath.Join(runtime, "EZ4Connectpro.exe"), os.Args[1:]...)
-	app.Env = append(app.Environ(), "EZ4CONNECTPRO_LAUNCHER="+launcher, "EZ4CONNECTPRO_RUNTIME="+runtime)
+	app.Env = append(app.Environ(), "EZ4CONNECTPRO_LAUNCHER="+launcher, "EZ4CONNECTPRO_RUNTIME="+runtime,
+		"EZ4CONNECTPRO_CORE="+core)
 	if err := app.Start(); err != nil {
 		return err
 	}
@@ -117,6 +130,22 @@ func cleanupRuntime(args []string) error {
 	}
 	if !strings.EqualFold(syscall.UTF16ToString(path[:size]), filepath.Join(root, "EZ4Connectpro.exe")) {
 		return fmt.Errorf("cleanup owner does not belong to this runtime")
+	}
+	archive, err := zip.NewReader(bytes.NewReader(payload), int64(len(payload)))
+	if err != nil {
+		return err
+	}
+	base, err := coreCacheBase()
+	if err != nil {
+		return err
+	}
+	core, releaseCore, err := prepareCoreCache(archive, base)
+	if err != nil {
+		return err
+	}
+	defer releaseCore()
+	if !strings.EqualFold(core, os.Getenv("EZ4CONNECTPRO_CORE")) {
+		return fmt.Errorf("cleanup core does not match this package")
 	}
 	if err := os.WriteFile(filepath.Join(root, ".cleanup-ready"), []byte(args[0]), 0600); err != nil {
 		return err

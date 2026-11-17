@@ -1,4 +1,5 @@
 #include "browserssosession.h"
+#include "browserlogincache.h"
 
 #include <QDir>
 #include <QFile>
@@ -59,7 +60,8 @@ BrowserSsoSession::BrowserSsoSession(QObject *parent) : QObject(parent)
     connect(&server, &QTcpServer::newConnection, this, &BrowserSsoSession::acceptClient);
     connect(&timeout, &QTimer::timeout, this, [this]()
     {
-        fail(QStringLiteral("浏览器登录已超时。请确认回传扩展已在当前浏览器配置中启用，再重新连接。"));
+        fail(resourceOnly ? QStringLiteral("资源页打开超时。请确认回传扩展已更新并启用，再点击打开资源页。")
+                          : QStringLiteral("浏览器登录已超时。请确认回传扩展已在当前浏览器配置中启用，再重新连接。"));
     });
 }
 
@@ -113,7 +115,7 @@ QString BrowserSsoSession::exportExtension(const QString &directory)
     return destination.absolutePath();
 }
 
-QUrl BrowserSsoSession::prepare(const QUrl &loginUrl, const QUrl &serverUrl)
+QUrl BrowserSsoSession::prepare(const QUrl &loginUrl, const QUrl &serverUrl, bool retain)
 {
     cancel();
     if (!isHttpUrl(loginUrl) || !isHttpUrl(serverUrl))
@@ -127,11 +129,36 @@ QUrl BrowserSsoSession::prepare(const QUrl &loginUrl, const QUrl &serverUrl)
         return {};
     }
     login = loginUrl;
+    keepForResources = retain;
+    callbackDelivered = false;
+    resourceOnly = false;
+    resources.clear();
     gateway = serverUrl.adjusted(QUrl::RemovePath | QUrl::RemoveQuery | QUrl::RemoveFragment);
     sessionPath = "/ez4connectpro/" + nonce() + '/';
     authority = "127.0.0.1:" + QByteArray::number(server.serverPort());
     timeout.start(5 * 60 * 1000);
     return entryUrl();
+}
+
+QUrl BrowserSsoSession::prepareResources(const QUrl &serverUrl, const QString &clientDataFile)
+{
+    if (BrowserLoginCache::gatewaySessionCookies(clientDataFile, serverUrl).isEmpty())
+    {
+        emit failed(QStringLiteral("当前线路没有可用的资源页会话，请先连接 VPN。"));
+        return {};
+    }
+    const QUrl begin = prepare(serverUrl.resolved(QUrl("/portal/")), serverUrl, true);
+    if (begin.isEmpty()) return {};
+    resourceOnly = true;
+    callbackDelivered = true;
+    openResources(clientDataFile);
+    if (resources.isEmpty())
+    {
+        fail(QStringLiteral("当前线路的资源页会话已不可用，请重试。"));
+        return {};
+    }
+    timeout.start(90000);
+    return begin;
 }
 
 QUrl BrowserSsoSession::entryUrl() const
@@ -221,43 +248,65 @@ void BrowserSsoSession::handleRequest(QTcpSocket *client, const QByteArray &meth
     if (method == "GET" && action == "begin")
     {
         respond(client, "200 OK", "text/html; charset=utf-8",
-                pageStart + "<meta name=\"ez4connectpro\" content=\"sso\"><h1>浏览器单点登录</h1>"
-                "<p>回传扩展启用后会在此标签页打开登录页。</p>"
+                pageStart + "<meta name=\"ez4connectpro\" content=\"sso\"><h1>"
+                + (resourceOnly ? QByteArray("打开官方资源页</h1><p>回传扩展启用后会复用当前 VPN 会话打开资源页。</p>")
+                                : QByteArray("浏览器单点登录</h1><p>回传扩展启用后会在此标签页打开登录页。</p>")) +
                 "<p>首次使用时，请在 EZ4Connectpro 导出回传扩展，并加载到当前浏览器配置后刷新本页。</p>");
     }
     else if (method == "GET" && action == "metadata")
     {
         respond(client, "200 OK", "application/json",
                 QJsonDocument(QJsonObject{{"login", login.toString(QUrl::FullyEncoded)},
-                                          {"gateway", gateway.toString(QUrl::FullyEncoded)}})
+                                          {"gateway", gateway.toString(QUrl::FullyEncoded)}, {"resourceOnly", resourceOnly}})
                     .toJson(QJsonDocument::Compact));
     }
     else if (method == "GET" && action == "return")
     {
         const QByteArray scriptNonce = nonce();
+        if (resourceOnly)
+        {
+            respond(client, "200 OK", "text/html; charset=utf-8",
+                    pageStart + "<meta name=\"ez4connectpro\" content=\"resources\"><h1>打开官方资源页</h1>"
+                    "<p id=\"status\">正在恢复当前线路的资源页会话…</p><script nonce=\"" + scriptNonce
+                    + "\">document.documentElement.dataset.ez4Callback='ready';</script>", scriptNonce);
+            return;
+        }
         respond(client, "200 OK", "text/html; charset=utf-8",
-                pageStart + "<h1>单点登录回传</h1><p id=\"status\">正在回传登录票据…</p><script nonce=\""
+                pageStart + "<meta name=\"ez4connectpro\" content=\"resources\"><h1>单点登录回传</h1><p id=\"status\">正在回传登录票据…</p><script nonce=\""
                 + scriptNonce + "\">" + R"(
 const ticket = location.hash.slice(1);
 history.replaceState(null, "", location.pathname);
 const statusLine = document.getElementById("status");
 fetch(location.pathname, {method: "POST", body: ticket, credentials: "omit"})
     .then(response => {
-        statusLine.textContent = response.ok ? "票据已提交，可以关闭此标签页。" : "票据无效，请回到工作台重新连接。";
+        statusLine.textContent = response.ok ? "票据已提交，连接成功后将打开官方资源页。" : "票据无效，请回到工作台重新连接。";
+        if (response.ok) document.documentElement.dataset.ez4Callback = "ready";
     })
     .catch(() => { statusLine.textContent = "登录会话已结束，请回到工作台重新连接。"; });
 </script>)", scriptNonce);
     }
     else if (method == "POST" && action == "return")
     {
-        if (origin != "http://" + authority || !isCallback(body, gateway))
+        if (callbackDelivered || origin != "http://" + authority || !isCallback(body, gateway))
         {
             respond(client, "400 Bad Request");
             return;
         }
         respond(client, "204 No Content");
-        cancel();
+        callbackDelivered = true;
+        if (keepForResources) timeout.start(90000);
+        else cancel();
         emit callbackReceived(body);
+    }
+    else if (method == "GET" && action == "resources" && keepForResources && callbackDelivered)
+    {
+        if (resources.isEmpty()) respond(client, "202 Accepted", "application/json", "{}");
+        else
+        {
+            respond(client, "200 OK", "application/json", resources);
+            resources.clear();
+            cancel();
+        }
     }
     else
     {
@@ -265,10 +314,20 @@ fetch(location.pathname, {method: "POST", body: ticket, credentials: "omit"})
     }
 }
 
+void BrowserSsoSession::openResources(const QString &clientDataFile)
+{
+    if (!server.isListening() || !callbackDelivered || !keepForResources) return;
+    const auto cookies = BrowserLoginCache::gatewaySessionCookies(clientDataFile, gateway);
+    if (cookies.isEmpty()) return;
+    resources = QJsonDocument(QJsonObject{{"url", gateway.resolved(QUrl("/portal/")).toString()},
+                                        {"cookies", cookies}}).toJson(QJsonDocument::Compact);
+}
+
 void BrowserSsoSession::cancel()
 {
     timeout.stop();
     server.close();
+    resources.clear();
 }
 
 void BrowserSsoSession::fail(const QString &message)

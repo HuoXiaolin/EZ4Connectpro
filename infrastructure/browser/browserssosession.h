@@ -14,7 +14,9 @@ public:
 
     static bool isCallback(const QByteArray &url, const QUrl &gateway);
     static QString exportExtension(const QString &directory);
-    QUrl prepare(const QUrl &loginUrl, const QUrl &gateway);
+    QUrl prepare(const QUrl &loginUrl, const QUrl &gateway, bool keepForResources = false);
+    QUrl prepareResources(const QUrl &gateway, const QString &clientDataFile);
+    void openResources(const QString &clientDataFile);
     QUrl entryUrl() const;
     void cancel();
 
@@ -34,6 +36,10 @@ private:
     QUrl gateway;
     QByteArray sessionPath;
     QByteArray authority;
+    QByteArray resources;
+    bool keepForResources = false;
+    bool callbackDelivered = false;
+    bool resourceOnly = false;
 };
 
 #endif // BROWSERSSOSESSION_H

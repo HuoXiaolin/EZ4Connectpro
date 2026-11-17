@@ -12,7 +12,7 @@
   </property>
   <property name="minimumSize">
    <size>
-    <width>780</width>
+    <width>960</width>
     <height>530</height>
    </size>
   </property>
@@ -463,6 +463,16 @@
              <property name="text">
               <string>设置系统代理</string>
              </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="resourcePageButton">
+             <property name="text"><string>打开资源页</string></property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QPushButton" name="manageTrustedDevicesButton">
+             <property name="text"><string>授信设备管理</string></property>
             </widget>
            </item>
            <item>

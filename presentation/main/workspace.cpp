@@ -14,6 +14,7 @@
 #include <QTimer>
 
 #include "infrastructure/storage/applicationpaths.h"
+#include "presentation/coordinators/authdialogcoordinator.h"
 #include "presentation/coordinators/connectionuicontroller.h"
 #include "ui_mainwindow.h"
 
@@ -95,9 +96,7 @@ void MainWindow::setupWorkspace()
     auto *remove = profileActions->addAction("删除配置", this, &MainWindow::deleteCurrentProfile);
     profileActions->addSeparator();
     auto *clearCache = profileActions->addAction("清理登录缓存", this, &MainWindow::clearLoginCache);
-    auto *devices = profileActions->addAction("授信设备管理…", this, &MainWindow::showDeviceManager);
-    devices->setObjectName("manageTrustedDevices");
-    connect(profileActions, &QMenu::aboutToShow, this, [this, rename, remove, clearCache, devices]()
+    connect(profileActions, &QMenu::aboutToShow, this, [this, rename, remove, clearCache]()
     {
         const auto profile = profileService->currentVpnProfile();
         const bool managed = !profileService->usesOverrideConfiguration();
@@ -110,12 +109,12 @@ void MainWindow::setupWorkspace()
         clearCache->setVisible(isATrust);
         QFile cache(ApplicationPaths::clientDataFile(profile.id, false));
         clearCache->setEnabled(isATrust && cache.exists() && canChange);
-        devices->setVisible(isATrust);
-        devices->setEnabled(isATrust && !profile.server.isEmpty() && !quitting);
     });
     ui->profileActionsButton->setMenu(profileActions);
 
     connect(ui->pushButton1, &QPushButton::clicked, this, &MainWindow::startSelectedProfile);
+    connect(ui->resourcePageButton, &QPushButton::clicked, this, &MainWindow::openResourcePage);
+    connect(ui->manageTrustedDevicesButton, &QPushButton::clicked, this, &MainWindow::showDeviceManager);
     connect(ui->pushButton2, &QPushButton::clicked, this, [this]()
     {
         if (auto *runtime = selectedConnection())
@@ -134,6 +133,14 @@ bool MainWindow::selectedConnectionIsActive() const
 {
     const auto *runtime = selectedConnection();
     return runtime && runtime->session->isActive();
+}
+
+void MainWindow::openResourcePage()
+{
+    const auto profile = profileService->currentVpnProfile();
+    auto *runtime = selectedConnection();
+    if (quitting || profile.protocolId != "atrust" || !runtime || runtime->session->state() != ConnectionState::Running) return;
+    runtime->auth->openResourcePage();
 }
 
 void MainWindow::refreshProfileList()
@@ -268,9 +275,14 @@ void MainWindow::updateConnectionState(ConnectionState state)
     ui->pushButton2->setEnabled(proxyReady && !quitting && !systemProxySession->isBusy()
         && (ownsProxy || !systemProxySession->isEnabled()));
     ui->pushButton2->setText(ownsProxy && systemProxySession->isEnabled() ? "释放系统代理" : "设置系统代理");
+    ui->resourcePageButton->setVisible(profile.protocolId == "atrust");
+    ui->resourcePageButton->setEnabled(running && !quitting);
+    ui->resourcePageButton->setToolTip(running ? "使用当前线路的登录会话打开官方应用资源页" : "连接成功后可打开官方应用资源页");
     ui->settingPushButton->setEnabled(canEdit);
     ui->guidePushButton->setEnabled(canEdit);
-    ui->profileActionsButton->setEnabled(!quitting && ((canEdit && managed) || profile.protocolId == "atrust"));
+    ui->manageTrustedDevicesButton->setVisible(profile.protocolId == "atrust");
+    ui->manageTrustedDevicesButton->setEnabled(profile.protocolId == "atrust" && !profile.server.isEmpty() && !quitting);
+    ui->profileActionsButton->setEnabled(!quitting && canEdit && (managed || profile.protocolId == "atrust"));
     ui->importConfigAction->setEnabled(!quitting);
     ui->exportConfigAction->setEnabled(supported && !quitting);
     refreshProperty(ui->routeProfileLabel, "stageActive", !authenticating && !running);

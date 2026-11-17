@@ -1,28 +1,31 @@
 {
-  "version": "2.0.1",
-  "date": "2026-11-16",
+  "version": "2.1.0",
+  "date": "2026-11-17",
   "platform": "Windows x64",
   "artifact": "EZ4Connectpro-windows-x64.exe",
-  "artifact_bytes": 28486144,
-  "sha256": "67fe06b562d0c499a44b413fd4ee1dbf3e164370ff6656e392132d0d7e142a0e",
-  "runtime_payload_bytes": 59508616,
+  "artifact_bytes": 28716032,
+  "sha256": "eda64dc13f11da936ec6cea0ddce8b8a26ccb99092b474251b9d9a543467ac92",
+  "runtime_payload_bytes": 59595888,
   "ctest": {
-    "passed": 26,
+    "passed": 4,
     "failed": 0,
-    "seconds": 4.23,
-    "stage": "Historical full suite before close-to-tray policy and device management changes; targeted checks below were run for this delivery"
+    "seconds": 3.13,
+    "scope": "Current fix: coreoutputparser, connectionsession, startup_signature and startup_shutdown on an independent Windows desktop.",
+    "native_error_dialog": "10000008 shown as interface-signature rejection, not timeout; one dialog, Failed state, no active connection or automatic retry."
   },
   "final_startup_tray_regression": {
     "passed": 9,
     "failed": 0,
     "seconds": 2.83,
-    "stage": "After process lifetime changes, before window-caption-only adjustment"
+    "stage": "After process lifetime changes, before window-caption-only adjustment",
+    "historical_validation_date": "2026-11-16"
   },
   "portable_cleanup_safety_tests": {
-    "passed": 2,
+    "passed": 6,
     "failed": 0,
-    "seconds": 0.019,
-    "scope": "Refuse unrelated owner processes and invalid cleanup targets without deleting data"
+    "seconds": 0.23,
+    "scope": "Stable core path and mtime; parallel launches; execution while leased; preserve active old bundles and unknown files; prune idle verified bundles; reject corruption; reject unrelated runtime cleanup owners and invalid paths",
+    "validation_stage": "Earlier 2026-11-17 delivery; portable cleanup implementation unchanged in this delivery."
   },
   "tray": {
     "dpi_sizes": [
@@ -37,14 +40,16 @@
     "long_tooltip_overflow": "passed",
     "parallel_connections_and_background_reconnect": "passed with local mock core",
     "targeted_stop_and_stop_all": "passed with local mock core",
-    "native_restore_maximize_notification": "passed on isolated desktop"
+    "native_restore_maximize_notification": "passed on isolated desktop",
+    "historical_validation_date": "2026-11-16"
   },
   "startup": {
     "multiple_selections": "passed",
     "legacy_single_selection_migration": "passed",
     "empty_disabled_manual_launch": "passed",
     "conflict_does_not_stop_other_lines": "passed with mock core",
-    "batch_elevation_and_cancellation": "passed with stubbed UAC; no real elevation or registry mutation"
+    "batch_elevation_and_cancellation": "passed with stubbed UAC; no real elevation or registry mutation",
+    "historical_validation_date": "2026-11-16"
   },
   "processes": {
     "main_window": "主界面 - EZ4Connectpro",
@@ -60,33 +65,35 @@
   },
   "package": {
     "runs_without_sdk_on_path": true,
-    "file_version": "2.0.1",
-    "product_version": "2.0.1",
+    "file_version": "2.1.0",
+    "product_version": "2.1.0",
     "webengine_qml_quick_dependencies": false,
-    "successful_packages_after_multi_startup_change": 8,
-    "final_smoke_seconds": 5.37,
-    "previous_build_test_package_seconds": 157.83,
-    "final_build_package_seconds": 8.41,
-    "timing_note": "Current device replacement and connected-management delivery: C++ build 157.41 seconds; final package 8.41 seconds; packaged EXE smoke 5.37 seconds. Targeted tests measured separately.",
+    "final_smoke_seconds": 5.16,
+    "timing_note": "Current fix: 4 targeted CTest cases 3.13 s; C++ build 123.20 s; successful Go tests/build 34.35 s; packaging 5.96 s; final packaged startup/tray/exit 5.16 s. One expected failing Go run preceded the fix. Existing toolchain/modules reused; no downloads.",
     "embedded_zip_crc": "passed",
-    "packaged_device_command": "passed: packaged replace-self command rejects missing saved login before network",
-    "cpp_build_seconds": 157.41
+    "packaged_device_command": "Packaged core -version passed. Fresh CAS, mandatory rejection, optional metadata rejection and device-management tests passed against current patched source.",
+    "payload_files": 28,
+    "core_sha256": "3ea2c1883185655e7e201693054a0bbf8fc09a46f7e52f50ad5b049345101c24",
+    "wintun_sha256": "e5da8447dc2c320edc0fc52fa01885c103de8c118481f683643cacc3220dafce"
   },
   "desktop": "Independent WinSta0 desktop; input desktop unchanged",
-  "scope": "Current delivery: full-quota replacement and device management while connected, tested with mock servers and two active mock VPN cores. Live policy and device list queried read-only. No real bind/unbind, Windows logon or TUN hardware acceptance was performed.",
+  "scope": "2.1.0 repair restores the prior authentication request format after the reported 10000008 regression. Device display metadata is attempted only after successful authentication. Error dialogs now identify signature rejection. No browser/resource/action-row behavior changed; no real gateway login or TUN acceptance was performed.",
   "tools": "D:\\Agant\\toolchain\\EZ4Connectpro",
   "source_delivery": "D:\\Agant\\Github_Source\\EZ4Connectpro",
   "binary_delivery": "D:\\Agant\\Github_Releases\\EZ4Connectpro\\EZ4Connectpro-windows-x64.exe",
   "delivery": {
-    "source_files": 195,
-    "sync_seconds": 1.28,
-    "sha256_verified": true,
-    "only_latest_exe": true
+    "source_root": "D:\\Agant\\Github_Source\\EZ4Connectpro",
+    "release_file": "D:\\Agant\\Github_Releases\\EZ4Connectpro\\EZ4Connectpro-windows-x64.exe",
+    "source_files": 208,
+    "only_latest_release_file": true,
+    "git_commit_or_push": false,
+    "seconds": 0.7
   },
   "cleanup": {
-    "final_removed_bytes": 536679823,
-    "final_seconds": 6.21,
-    "shared_tools_and_module_dependencies_preserved": true,
+    "preserved": "Latest out EXE, source, scripts, tests, licenses, user profiles and shared toolchain",
+    "status": "Complete",
+    "bytes_removed": 641734414,
+    "seconds": 5.85,
     "build_directory_removed": true
   },
   "shutdown_authentication_fix": {
@@ -104,11 +111,11 @@
     "runtime_directory_removed_after_exit": "passed",
     "input_desktop_unchanged": true,
     "native_smoke_attempts": 1,
-    "initial_attempt": "Current packaged EXE passed on its first native smoke run; historical helper adjustment occurred in a previous delivery.",
+    "initial_attempt": "Current repaired package: caption close, tray restore/notification, process ownership and exit passed; no remaining QA child processes.",
     "scope": "Idle close policy changed; connected close already hid to tray and uses the same unconditional hide path."
   },
   "device_management": {
-    "entry": "aTrust profile -> More actions -> Trusted device management; available while connected without stopping or restarting its VPN core",
+    "entry": "Selected aTrust profile -> direct Trusted device management button in the same row as resources and edit; available while connected without stopping/restarting its VPN core.",
     "live_gateway": {
       "trusted_device_listing": "passed read-only",
       "trusted_devices_returned": 3,
@@ -117,7 +124,8 @@
       "trusted_device_limit": 3,
       "trusted_device_count": 3,
       "actual_device_mutations": 0,
-      "private_device_identifiers_saved_to_repository": false
+      "private_device_identifiers_saved_to_repository": false,
+      "validation_stage": "Historical 2.0.1 read-only probe; not repeated for 2.1.0."
     },
     "replacement_contract": {
       "verified_against": "Gateway public portal JavaScript for full-quota replacement and device management",
@@ -188,18 +196,187 @@
       "core_pids_unchanged": true,
       "both_sessions_remained_ready": true,
       "rename_delete_and_clear_cache_still_disabled": true,
-      "scope": "Real MainWindow action and device-management subprocess, mock VPN cores and device server state; no real gateway mutation"
+      "scope": "Current 2.1.0 direct-button integration passed with two mock VPN cores; core PIDs remained unchanged. No real gateway mutation.",
+      "validation_stage": "Initial 2.1.0 direct-button integration; unchanged in this repair."
     },
     "integration_regression": {
-      "passed": 3,
-      "failed": 0,
-      "seconds": 6.15,
-      "startup_devices_seconds": 2.93,
-      "startup_shutdown_seconds": 2.44,
-      "startup_ui_seconds": 0.76,
-      "initial_attempt": "Test initially changed the list highlight without invoking the queued profile-click handler; corrected to exercise the real selection action, then all targeted checks passed"
+      "passed": true,
+      "seconds": 2.76,
+      "scope": "Final direct button while two profiles connected; entry removed from More menu; rename/delete/cache clear disabled while active. Existing replacement fixtures used.",
+      "validation_stage": "Initial 2.1.0 delivery; unchanged in this repair."
     },
     "server_limits": "Quota, self-service and approval policies remain enforced; additional-authentication continuation is not implemented in this dialog",
-    "sample_screenshot": "docs/devices.png (synthetic devices only)"
+    "sample_screenshot": "docs/devices.png (synthetic devices only)",
+    "historical_validation_date": "2026-11-16"
+  },
+  "historical_ctest": {
+    "passed": 26,
+    "failed": 0,
+    "seconds": 4.23,
+    "stage": "Historical full suite before close-to-tray policy and device management changes; targeted checks below were run for this delivery"
+  },
+  "browser_sso_restore": {
+    "windows_browser_tested": "Google Chrome 157.0.8103.79",
+    "storage": "DPAPI current-user encryption; bound to profile file path and gateway origin; atomic save; not exported with INI",
+    "unit_checks": [
+      "session cookie and HttpOnly/SameSite preserved",
+      "host-only and domain scope preserved",
+      "expired and partitioned cookies not restored",
+      "wrong gateway, different profile path and truncated encrypted file rejected",
+      "no plaintext cookie values in file",
+      "clearing default login cache also clears browser records without affecting another line"
+    ],
+    "native_cross_process_restore": "Passed in prior 2.0.1 delivery on 2026-11-17 (2.00 s). Not rerun for this delivery; native direct resources and post-interactive resources were tested with Chrome/Zen.",
+    "native_expired_session_fallback": "Passed in earlier 2026-11-17 delivery; not rerun for resource-page changes.",
+    "browser_configuration": "Temporary user-data directory remains isolated and is deleted; only encrypted cookies persist",
+    "gecko_restore": "Not implemented; Firefox/Zen retain interactive login",
+    "actual_gateway_reboot": "Not performed; local simulator success does not establish real gateway acceptance",
+    "upgrade": "One interactive login may be needed to establish a cache because earlier temporary browser records were deleted"
+  },
+  "stable_core_cache": {
+    "passed": true,
+    "seconds": 7.14,
+    "same_core_path": true,
+    "same_core_mtime": true,
+    "same_core_sha256": true,
+    "temporary_runtime_removed": true,
+    "input_desktop_unchanged": true,
+    "cached_core_sha256": "bd6b9392105602b71d55b93277cc530072f960f508b7fccd344f2646d1c6624d",
+    "crash_cleanup_passed": "Passed in earlier 2026-11-17 delivery; current two normal exits passed.",
+    "crash_check_seconds": 2.03,
+    "path": "%LOCALAPPDATA%/EZ4Connectpro/cores/core-<content SHA-256>/zju-connect.exe",
+    "firewall_rules_changed": false,
+    "organization_policy_changed": false,
+    "first_or_updated_core_may_prompt": true,
+    "wintun_sha256": "e5da8447dc2c320edc0fc52fa01885c103de8c118481f683643cacc3220dafce",
+    "validation_stage": "Initial 2.1.0 two-launch comparison; unchanged launcher implementation. Current fix single packaged start/exit passed; new core hash is in package.core_sha256."
+  },
+  "authentication_investigation": {
+    "existing_device_id_present": true,
+    "existing_cookies_present": true,
+    "official_installer": "Locally available 2.4.10.20; inspected without installation or executing vendor binaries",
+    "official_cas_reboot_restore": "User reports successful restore with the official client on another computer; official version and successful-restore log on that computer are pending.",
+    "auth_config_passport_token_enable": 0,
+    "current_session_token_exchange_code": 75510022,
+    "token_issued": false,
+    "server_policy_bypassed": false,
+    "account_device_mutations": 0,
+    "private_tokens_or_device_ids_in_repository": false,
+    "conclusion": "No native token was issued for the tested EZ4Connectpro session. The flag and rejection do not establish that the whole gateway disables the feature. Compare a successful official restore on the other computer before implementing or claiming equivalence.",
+    "json_probe_note": "Earlier JSON-form diagnostic; not equivalent to the later native form request.",
+    "native_form_token_exchange_http_status": 400,
+    "native_flow": "passportTokenExchange -> persistent SdpcEntity passportToken -> passportTokenOnline; established from local official 2.4.10.20 static analysis.",
+    "native_restoration_implemented": false,
+    "diagnostic_collector": "scripts/inspect-atrust-restore.ps1: allowlisted event names, timestamps and numeric status only; synthetic redaction fixture passed.",
+    "validation_stage": "Historical 2.0.1 probes with the then-existing client identity; no token-exchange request repeated in this 2.1.0 delivery."
+  },
+  "delivery_status": "Repaired 2.1.0 delivered: working and canonical EXE hashes match; 208 source files synchronized; rebuildable cache removed. Mandatory authentication retains upstream request format. Actual gateway reconnection awaits user retest.",
+  "resource_page": {
+    "entry": "Direct Open resource page button, in the same row as device management and edit. Enabled for the selected Running aTrust profile.",
+    "flow": "Reuse only this profile current gateway sid from core cache. Launch or reuse its configured browser and open exact gateway /portal/; no CAS login or ticket replay. Existing interactive-login automatic resource opening remains.",
+    "silent_restore": "No automatic visible browser during silent restore; explicit resource button can open it afterward.",
+    "native_direct_resources": {
+      "chrome_passed": true,
+      "zen_passed": true,
+      "seconds": 7.23,
+      "checks": [
+        "zero CAS callbacks",
+        "zero CAS ticket consumption",
+        "same-gateway cookie present",
+        "foreign-host cookie absent",
+        "wrong-port cookie absent",
+        "repeated open succeeds"
+      ]
+    },
+    "native_post_login_regression": {
+      "chrome_exit": 0,
+      "zen_exit": 0,
+      "seconds": 7.23,
+      "checks": [
+        "one CAS callback",
+        "browser never consumes CAS ticket",
+        "same-gateway cookie present",
+        "foreign-host and wrong-port cookies absent"
+      ]
+    },
+    "default_browser_extension": {
+      "version": "1.2.0",
+      "node_scenarios_passed": 7,
+      "real_profile_end_to_end": "Not performed. Actual extension scripts checked with mock APIs and the Qt local bridge tested separately. Existing users must re-export/reload extension 1.2.0."
+    },
+    "live_gateway_portal": "Not performed; local browser success does not establish actual gateway portal acceptance.",
+    "validation_stage": "Initial 2.1.0 delivery; implementation unchanged in this repair and browser tests not rerun."
+  },
+  "dns_and_log_fixes": {
+    "dns_interception": "The core packet path now checks the configured DNSHijack flag on Windows/Linux/macOS; disabled leaves DNS packets for original-destination forwarding. System DNS and system proxy settings were not changed.",
+    "regression_test": "TestEZ4DNSInterceptionRequiresOptIn passed: disabled, enabled, configured upstream, non-DNS destination.",
+    "go_packages_passed": {
+      "client/atrust": 0.154,
+      "client/atrust/auth": 0.322,
+      "stack/tun": 0.042
+    },
+    "font": "Application font keeps a positive point size; stylesheet font sizes expressed in equivalent points.",
+    "final_package_font_warnings": 0,
+    "live_network_retest": "Not performed; the supplied log alone cannot identify the processes originating Microsoft-domain DNS requests."
+  },
+  "windows_device_identity": {
+    "fields": "Real os.Hostname(), Windows RtlGetVersion() and runtime architecture in an optional post-authentication report. Wire UserAgent/platform retain the pinned upstream Linux-compatible protocol.",
+    "stable_device_id_preserved": true,
+    "cached_session_preserved_on_metadata_rejection": true,
+    "read_only_device_queries_do_not_report": true,
+    "fabricated_security_or_trust_state": false,
+    "fresh_login_and_cached_connection": "Both paths call optional metadata update only after onlineInfo succeeds. Mandatory authentication requests retain the exact upstream contract and still enforce rejection.",
+    "go_package_seconds": {
+      "client/atrust": 0.154,
+      "client/atrust/auth": 0.322,
+      "stack/tun": 0.042
+    },
+    "live_gateway_name_refresh": "Not tested; historical server device labels may refresh only when the gateway accepts the next report. No device was unbound or rebound."
+  },
+  "local_network_observation": {
+    "read_only": true,
+    "proxy_still_loopback": true,
+    "ez4_adapter_dns_servers": 0,
+    "ez4_adapter_routes": 115,
+    "vpn_default_route_metric": 9999,
+    "conclusion": "Local listener startup lines alone do not show a Codex connection failure. Matching routes/DNS/proxy can change paths. Existing settings were not changed; Codex upstream route was not identified.",
+    "validation_stage": "Read-only snapshot before initial 2.1.0 delivery; not refreshed in this repair."
+  },
+  "build_revision": "2026-11-17-reportenv-compatibility-fix",
+  "historical_action_layout": {
+    "passed": 3,
+    "failed": 0,
+    "seconds": 8.3,
+    "tests": [
+      "startup_devices_test 2.76 s",
+      "startup_resources_test 2.71 s",
+      "startup_resources_test with QT_SCALE_FACTOR=1.5 2.81 s"
+    ],
+    "minimum_window_logical": [
+      960,
+      530
+    ],
+    "checks": "All six visible connection actions share the same row, meet their size hints, and remain within the window. Light/dark and high-DPI screenshots reviewed. Main-window packaged aTrust screenshot also reviewed.",
+    "initial_attempt": "New minimum-size assertion exposed clipped buttons at the former 780-pixel minimum; increased minimum width to 960 and reran successfully.",
+    "validation_stage": "Initial 2.1.0 delivery, before this compatibility fix; layout unchanged and not retested."
+  },
+  "reportenv_compatibility_fix": {
+    "observed_failure": "User supplied initial 2.1.0 logs: browser callback succeeds, public reportEnv repeatedly returns 10000008 with interface sig verify failed. Repeating CAS and clearing login cache did not help.",
+    "cause": "Initial 2.1.0 changed upstream wire UserAgent/platform and mandatory reportEnv payload when adding OS display metadata. Restored the pinned upstream authentication request contract.",
+    "mandatory_login_checks": "public reportEnv remains required; rejection stops login. No retry that suppresses a rejection, no skipped authCheck or fabricated success.",
+    "optional_metadata": "Real hostname/Windows version/architecture update occurs only after authentication and onlineInfo succeed. Existing stable device ID preserved; metadata errors are nonfatal.",
+    "regression_before_fix": "New local real-CAS fixture reproduced 10000008 for both acceptance-path subcases with initial 2.1.0 source.",
+    "regression_after_fix": "Four fresh-CAS contract cases pass: mandatory acceptance/rejection crossed with optional metadata acceptance/rejection. Cached-session and metadata field tests also pass.",
+    "go_packages": {
+      "client/atrust": 0.154,
+      "client/atrust/auth": 0.322,
+      "stack/tun": 0.042
+    },
+    "real_gateway_retest": "Not performed. User should retry the repaired package with the same login method; no real gateway requests or user cache changes were made in this repair.",
+    "build_seconds": {
+      "cpp": 123.2,
+      "go_after_fix": 34.35,
+      "package": 5.96
+    }
   }
 }

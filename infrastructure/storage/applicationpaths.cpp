@@ -64,10 +64,17 @@ QString ApplicationPaths::clientDataFile(const QString &profileId, bool createIf
     return clientData.fileName();
 }
 
+QString ApplicationPaths::browserLoginDataFile(const QString &profileId)
+{
+    return QFileInfo(clientDataFile(profileId, false)).dir().filePath("browser-login.dat");
+}
+
 bool ApplicationPaths::clearClientData(const QString &profileId)
 {
+    QFile browserLogin(browserLoginDataFile(profileId));
+    const bool browserRemoved = !browserLogin.exists() || browserLogin.remove();
     QFile clientData(clientDataFile(profileId, false));
-    return !clientData.exists() || clientData.remove();
+    return (!clientData.exists() || clientData.remove()) && browserRemoved;
 }
 
 QString ApplicationPaths::logDirectory()

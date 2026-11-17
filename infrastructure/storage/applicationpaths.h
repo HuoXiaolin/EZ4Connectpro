@@ -12,6 +12,7 @@ struct DebugArtifactPaths
 };
 
 QString clientDataFile(const QString &profileId, bool createIfMissing = true);
+QString browserLoginDataFile(const QString &profileId);
 void setProfileRoot(const QString &path);
 QString profileRoot();
 bool clearClientData(const QString &profileId);

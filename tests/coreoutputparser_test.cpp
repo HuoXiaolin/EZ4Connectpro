@@ -45,6 +45,10 @@ bool recognizesCoreProtocol()
         {"invalid SID", CoreOutputEvent::AuthExpired},
         {"l3-tunnel tunnel auth failed:", CoreOutputEvent::AuthExpired},
         {"client setup error", CoreOutputEvent::ClientFailed},
+        {"reportEnv failed with code 10000008: interface sig verify failed", CoreOutputEvent::EnvironmentSignatureFailed},
+        {"Login error: reportEnv failed with code 10000008", CoreOutputEvent::EnvironmentSignatureFailed},
+        {"VPN client setup error: reportEnv failed with code 10000008", CoreOutputEvent::EnvironmentSignatureFailed},
+        {"Windows device information not updated; keeping current login: device information rejected with code 10000008", CoreOutputEvent::None},
         {"panic: runtime error", CoreOutputEvent::CorePanic},
         {"ordinary core output", CoreOutputEvent::None},
     };

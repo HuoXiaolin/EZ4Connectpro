@@ -108,6 +108,7 @@ private:
     void clearLoginCache();
 
     void showDeviceManager();
+    void openResourcePage();
 
     void gracefullyQuit();
 

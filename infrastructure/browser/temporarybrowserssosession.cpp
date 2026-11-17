@@ -1,4 +1,5 @@
 #include "temporarybrowserssosession.h"
+#include "browserlogincache.h"
 
 #include "browserssosession.h"
 
@@ -161,6 +162,12 @@ TemporaryBrowserSsoSession::TemporaryBrowserSsoSession(QObject *parent) : QObjec
     pageRetry.setSingleShot(true);
     pageRetry.setInterval(150);
     timeout.setSingleShot(true);
+    silentTimeout.setSingleShot(true);
+    silentTimeout.setInterval(15000);
+    saveTimeout.setSingleShot(true);
+    saveTimeout.setInterval(3000);
+    connect(&silentTimeout, &QTimer::timeout, this, &TemporaryBrowserSsoSession::showInteractiveBrowser);
+    connect(&saveTimeout, &QTimer::timeout, this, &TemporaryBrowserSsoSession::complete);
     connect(&poll, &QTimer::timeout, this, &TemporaryBrowserSsoSession::findChromiumEndpoint);
     connect(&pageRetry, &QTimer::timeout, this, &TemporaryBrowserSsoSession::findLoginPage);
     connect(&timeout, &QTimer::timeout, this, [this]()
@@ -208,7 +215,7 @@ TemporaryBrowserSsoSession::~TemporaryBrowserSsoSession()
     cancel();
 }
 
-void TemporaryBrowserSsoSession::start(const QUrl &url, const QUrl &server, const QString &browser)
+void TemporaryBrowserSsoSession::start(const QUrl &url, const QUrl &server, const QString &browser, const QString &loginCache, bool resources)
 {
     cancel();
     if (process.state() != QProcess::NotRunning || !isHttpUrl(url) || !isHttpUrl(server))
@@ -238,6 +245,19 @@ void TemporaryBrowserSsoSession::start(const QUrl &url, const QUrl &server, cons
         gateway.setPort(-1);
     }
     gecko = engine == Engine::Gecko;
+    keepForResources = resources;
+    browserProgram = program;
+    cachePath = gecko ? QString{} : loginCache;
+    savedCookies = BrowserLoginCache::load(cachePath, gateway);
+    silent = !savedCookies.isEmpty();
+    if (silent) emit restoringLogin();
+    else emit interactionRequired();
+    launchBrowser();
+}
+
+void TemporaryBrowserSsoSession::launchBrowser()
+{
+    QFile::remove(profile->filePath("DevToolsActivePort"));
     QStringList args;
     if (gecko)
     {
@@ -256,11 +276,42 @@ void TemporaryBrowserSsoSession::start(const QUrl &url, const QUrl &server, cons
     {
         args = {"--user-data-dir=" + profile->path(), "--remote-debugging-port=0", "--no-first-run",
                 "--no-default-browser-check", "--disable-background-mode", "--new-window", startPage};
+        if (silent) args.prepend("--headless=new");
         poll.start();
     }
     active = true;
     timeout.start(20000);
-    process.start(program, args);
+    if (silent) silentTimeout.start();
+    process.start(browserProgram, args);
+}
+
+void TemporaryBrowserSsoSession::startResources(const QUrl &server, const QString &clientDataFile, const QString &browser)
+{
+    if (BrowserLoginCache::gatewaySessionCookies(clientDataFile, server).isEmpty())
+    {
+        emit failed(QStringLiteral("当前线路没有可用的资源页会话，请先连接 VPN。"));
+        return;
+    }
+    start(server.resolved(QUrl("/portal/")), server, browser, {}, true);
+    if (!active) return;
+    resourceOnly = true;
+    resourceDataFile = clientDataFile;
+    callbackDelivered = true; // Reuse the connected core session; no login or callback is needed.
+}
+
+void TemporaryBrowserSsoSession::showInteractiveBrowser()
+{
+    if (!active || !silent || !callback.isEmpty()) return;
+    stopBrowser();
+    if (process.state() != QProcess::NotRunning)
+    {
+        cancel();
+        emit failed(QStringLiteral("登录浏览器尚未退出，请稍后重新打开。"));
+        return;
+    }
+    silent = false;
+    emit interactionRequired();
+    launchBrowser();
 }
 
 void TemporaryBrowserSsoSession::readBrowserOutput()
@@ -362,6 +413,11 @@ void TemporaryBrowserSsoSession::enableInterception()
         fail(protocolError);
         return;
     }
+    if (resourceOnly)
+    {
+        openResources(resourceDataFile);
+        return;
+    }
     QJsonArray patterns;
     for (const QString &path : callbackPaths)
     {
@@ -380,12 +436,23 @@ void TemporaryBrowserSsoSession::enableInterception()
     if (gecko)
     {
         send("network.addIntercept", {{"phases", QJsonArray{"beforeRequestSent"}}, {"urlPatterns", patterns},
-                                      {"contexts", QJsonArray{contextId}}}, [this](const QJsonObject &) { navigate(); });
+                                      {"contexts", QJsonArray{contextId}}}, [this](const QJsonObject &result)
+        { interceptId = result.value("intercept").toString(); restoreCookiesAndNavigate(); });
     }
     else
     {
-        send("Fetch.enable", {{"patterns", patterns}}, [this](const QJsonObject &) { navigate(); });
+        send("Fetch.enable", {{"patterns", patterns}}, [this](const QJsonObject &) { restoreCookiesAndNavigate(); });
     }
+}
+
+void TemporaryBrowserSsoSession::restoreCookiesAndNavigate()
+{
+    if (gecko || savedCookies.isEmpty())
+    {
+        navigate();
+        return;
+    }
+    send("Network.setCookies", {{"cookies", savedCookies}}, [this](const QJsonObject &) { navigate(); }, false);
 }
 
 void TemporaryBrowserSsoSession::navigate()
@@ -408,17 +475,22 @@ void TemporaryBrowserSsoSession::navigate()
     }
 }
 
-void TemporaryBrowserSsoSession::send(const QString &method, const QJsonObject &params, Reply reply)
+void TemporaryBrowserSsoSession::send(const QString &method, const QJsonObject &params, Reply reply, bool required)
 {
     const int id = ++nextCommand;
+    const bool initialGeckoNavigation = gecko && method == "browsingContext.navigate" && callback.isEmpty();
     if (reply)
     {
-        replies.insert(id, [this, method, reply = std::move(reply)](const QJsonObject &event)
+        replies.insert(id, [this, method, required, initialGeckoNavigation, reply = std::move(reply)](const QJsonObject &event)
         {
             if (event.contains("error") || event.value("type").toString() == "error")
             {
+                // Firefox reports the intentionally blocked CAS navigation as an error.
+                // Once its ticket is captured, that late reply must not close the resource window.
+                if (initialGeckoNavigation && !callback.isEmpty()) return;
                 qWarning() << "临时浏览器控制命令失败" << method;
-                fail(protocolError);
+                if (required) fail(protocolError);
+                else reply({});
             }
             else
             {
@@ -484,23 +556,116 @@ void TemporaryBrowserSsoSession::handleRequest(const QJsonObject &event)
 
     // Abort the browser request before the one-use ticket is submitted by the VPN core.
     callback = url;
+    silentTimeout.stop();
     send(abortMethod, identity, [this](const QJsonObject &)
     {
-        const QByteArray result = callback;
-        cancel();
-        emit callbackReceived(result);
+        saveCookiesAndComplete();
     });
 }
 
-void TemporaryBrowserSsoSession::cancel()
+void TemporaryBrowserSsoSession::saveCookiesAndComplete()
+{
+    if (cachePath.isEmpty())
+    {
+        complete();
+        return;
+    }
+    saveTimeout.start();
+    send("Storage.getCookies", {}, [this](const QJsonObject &result)
+    {
+        if (!result.value("cookies").isArray()
+            || !BrowserLoginCache::save(cachePath, gateway, result.value("cookies").toArray()))
+            qWarning() << "无法保存本线路的浏览器登录记录，下次可能需要重新认证";
+        complete();
+    }, false);
+}
+
+void TemporaryBrowserSsoSession::complete()
+{
+    if (!active || callback.isEmpty() || callbackDelivered) return;
+    const QByteArray result = callback;
+    const bool restored = silent;
+    if (keepForResources && !silent)
+    {
+        callbackDelivered = true;
+        timeout.stop();
+        saveTimeout.stop();
+        // Leave the authenticated browser owned by this session until the user closes it.
+        // The CAS callback remains blocked; the core consumes its ticket exactly once.
+    }
+    else cancel();
+    qInfo().noquote() << (restored ? "已从本线路的浏览器登录记录恢复认证" : "浏览器登录票据已回传");
+    emit callbackReceived(result);
+}
+
+void TemporaryBrowserSsoSession::openResources(const QString &clientDataFile)
+{
+    if (!active || !callbackDelivered || contextId.isEmpty()) return;
+    const QJsonArray cookies = BrowserLoginCache::gatewaySessionCookies(clientDataFile, gateway);
+    if (cookies.isEmpty())
+    {
+        emit failed(QStringLiteral("当前线路的资源页会话不可用，请检查 VPN 连接状态。"));
+        return;
+    }
+    resourcePageOpened = false;
+    const QUrl portal = gateway.resolved(QUrl("/portal/"));
+    const auto open = [this, portal]()
+    {
+        const auto navigated = [this](const QJsonObject &)
+        {
+            resourcePageOpened = true;
+            timeout.stop();
+            send(gecko ? "browsingContext.activate" : "Page.bringToFront",
+                 gecko ? QJsonObject{{"context", contextId}} : QJsonObject{}, {}, false);
+            qInfo().noquote() << "已在浏览器中打开官方资源页";
+            emit resourcesOpened();
+        };
+        const auto navigatePortal = [this, portal, navigated](const QJsonObject &)
+        {
+            if (gecko)
+                send("browsingContext.navigate", {{"context", contextId}, {"url", portal.toString()}, {"wait", "none"}}, navigated);
+            else send("Page.navigate", {{"url", portal.toString()}}, navigated);
+        };
+        if (gecko)
+        {
+            if (interceptId.isEmpty()) navigatePortal({});
+            else send("network.removeIntercept", {{"intercept", interceptId}}, [this, navigatePortal](const QJsonObject &result)
+            { interceptId.clear(); navigatePortal(result); });
+        }
+        else send("Fetch.disable", {}, navigatePortal);
+    };
+    if (!gecko)
+    {
+        send("Network.setCookies", {{"cookies", cookies}}, [open](const QJsonObject &) { open(); });
+        return;
+    }
+    auto remaining = std::make_shared<int>(cookies.size());
+    for (const auto &value : cookies)
+    {
+        auto cookie = value.toObject();
+        cookie.remove("url");
+        cookie.insert("domain", gateway.host());
+        cookie.insert("sameSite", "lax");
+        cookie.insert("value", QJsonObject{{"type", "string"}, {"value", cookie.value("value")}});
+        // This browser owns a fresh default user context. A context partition would
+        // scope cookies to the aborted CAS error page rather than the VPN portal.
+        send("storage.setCookie", {{"cookie", cookie}},
+             [remaining, open](const QJsonObject &) { if (--*remaining == 0) open(); });
+    }
+}
+
+void TemporaryBrowserSsoSession::stopBrowser()
 {
     active = false;
     timeout.stop();
+    silentTimeout.stop();
+    saveTimeout.stop();
     poll.stop();
     pageRetry.stop();
     replies.clear();
     sessionId.clear();
     contextId.clear();
+    interceptId.clear();
     browserOutput.clear();
     callback.clear();
 
@@ -522,6 +687,17 @@ void TemporaryBrowserSsoSession::cancel()
         }
     }
     socket.abort();
+}
+
+void TemporaryBrowserSsoSession::cancel()
+{
+    stopBrowser();
+    silent = false;
+    savedCookies = {};
+    callbackDelivered = false;
+    resourcePageOpened = false;
+    resourceOnly = false;
+    resourceDataFile.clear();
     if (process.state() == QProcess::NotRunning)
     {
         profile.reset();
@@ -532,6 +708,16 @@ void TemporaryBrowserSsoSession::fail(const QString &message)
 {
     if (active)
     {
+        if (callbackDelivered && (!resourceOnly || resourcePageOpened))
+        {
+            cancel(); // Closing the resource window must not cancel the VPN connection.
+            return;
+        }
+        if (silent && callback.isEmpty())
+        {
+            showInteractiveBrowser();
+            return;
+        }
         cancel();
         emit failed(message);
     }

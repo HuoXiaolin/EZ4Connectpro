@@ -104,6 +104,11 @@ CoreOutputEvent CoreOutputParser::parse(const QString &output)
     {
         return CoreOutputEvent::AuthExpired;
     }
+    if (output.contains("reportEnv failed with code 10000008", Qt::CaseInsensitive)
+        || output.contains("interface sig verify failed", Qt::CaseInsensitive))
+    {
+        return CoreOutputEvent::EnvironmentSignatureFailed;
+    }
     if (output.contains("client setup error"))
     {
         return CoreOutputEvent::ClientFailed;

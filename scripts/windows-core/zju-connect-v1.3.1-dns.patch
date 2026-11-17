@@ -1,0 +1,50 @@
+--- a/stack/tun/stack.go
++++ b/stack/tun/stack.go
+@@ -40,6 +40,7 @@
+ 	resourceCache       *resourceDecisionCache
+ 	ipPool              *ippool.IPPool[[]client.DomainResource]
+ 	fakeIP              bool
++	dnsHijack           bool
+ }
+ 
+ func (s *Stack) SetupResolve(r zcdns.LocalServer) {
+@@ -284,7 +285,7 @@
+ 
+ // only can handle udp dns query!
+ func (s *Stack) shouldHijackUDPDns(ipHeader zctcpip.IPv4Packet, udpHeader zctcpip.UDPPacket) bool {
+-	if udpHeader.DestinationPort() != 53 {
++	if !s.dnsHijack || s.resolve == nil || udpHeader.DestinationPort() != 53 {
+ 		return false
+ 	}
+ 	return s.resolve.CheckDnsHijack(ipHeader.DestinationIP())
+--- a/stack/tun/stack_darwin.go
++++ b/stack/tun/stack_darwin.go
+@@ -88,7 +88,7 @@
+ 
+ func NewStack(vpnClient client.Client, dnsHijack, fakeIP bool, ipResources []client.IPResource, _ ...string) (*Stack, error) {
+ 	var err error
+-	s := &Stack{}
++	s := &Stack{dnsHijack: dnsHijack}
+ 	s.ipResources = ipResources
+ 	s.fakeIP = fakeIP
+ 	s.endpoint = &Endpoint{
+--- a/stack/tun/stack_linux.go
++++ b/stack/tun/stack_linux.go
+@@ -59,7 +59,7 @@
+ 
+ func NewStack(vpnClient client.Client, dnsHijack, fakeIP bool, ipResources []client.IPResource, _ ...string) (*Stack, error) {
+ 	var err error
+-	s := &Stack{}
++	s := &Stack{dnsHijack: dnsHijack}
+ 	s.ipResources = ipResources
+ 	s.fakeIP = fakeIP
+ 	s.endpoint = &Endpoint{
+--- a/stack/tun/stack_windows.go
++++ b/stack/tun/stack_windows.go
+@@ -182,5 +182,6 @@
+ 		},
+ 		ipResources: ipResources,
+ 		fakeIP:      fakeIP,
++		dnsHijack:   dnsHijack,
+ 	}, nil
+ }

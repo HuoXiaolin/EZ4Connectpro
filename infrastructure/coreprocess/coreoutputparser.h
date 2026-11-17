@@ -29,6 +29,7 @@ enum class CoreOutputEvent
     InteractiveError,
     AuthNotAvailable,
     AuthExpired,
+    EnvironmentSignatureFailed,
     ClientFailed,
     CorePanic,
 };

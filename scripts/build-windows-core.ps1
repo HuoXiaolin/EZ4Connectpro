@@ -40,9 +40,17 @@ try {
     }
     & git.exe -C $source apply --whitespace=error (Join-Path $PSScriptRoot "windows-core/zju-connect-v1.3.1-devices.patch")
     if ($LASTEXITCODE -ne 0) { throw "Could not apply the aTrust device-management patch" }
+    & git.exe -C $source apply --whitespace=error (Join-Path $PSScriptRoot "windows-core/zju-connect-v1.3.1-dns.patch")
+    if ($LASTEXITCODE -ne 0) { throw "Could not apply the DNS interception switch patch" }
+    & git.exe -C $source apply --whitespace=error (Join-Path $PSScriptRoot "windows-core/zju-connect-v1.3.1-identity.patch")
+    if ($LASTEXITCODE -ne 0) { throw "Could not apply the Windows device identity patch" }
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'windows-core/device_identity_windows.go') -Destination (Join-Path $source 'client/atrust/auth/ez4_device_identity_windows.go')
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'windows-core/device_identity_other.go') -Destination (Join-Path $source 'client/atrust/auth/ez4_device_identity_other.go')
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'windows-core/device_management.go') -Destination (Join-Path $source 'client/atrust/ez4_device_management.go')
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'windows-core/device_list.go') -Destination (Join-Path $source 'client/atrust/auth/ez4_device_list.go')
     if ($TestDeviceManagement) {
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'windows-core/device_identity_test.go') -Destination (Join-Path $source 'client/atrust/auth/ez4_device_identity_windows_test.go')
+        Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'windows-core/dns_switch_test.go') -Destination (Join-Path $source 'stack/tun/ez4_dns_switch_test.go')
         Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'windows-core/device_management_test.go') -Destination (Join-Path $source 'client/atrust/ez4_device_management_test.go')
         Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'windows-core/device_list_test.go') -Destination (Join-Path $source 'client/atrust/auth/ez4_device_list_test.go')
     }
@@ -58,7 +66,7 @@ try {
     Push-Location $source
     try {
         if ($TestDeviceManagement) {
-            & $go test -mod=readonly -count=1 -run '^TestEZ4' ./client/atrust ./client/atrust/auth
+            & $go test -mod=readonly -count=1 -run '^TestEZ4|^Test.*Tunnel' ./client/atrust ./client/atrust/auth ./stack/tun
             if ($LASTEXITCODE -ne 0) { throw 'aTrust device management tests failed' }
         }
         & $go build -mod=readonly -trimpath -buildvcs=false -ldflags "-s -w -X main.zjuConnectVersion=v1.3.1 -X main.CommitID=ez4tun1" `

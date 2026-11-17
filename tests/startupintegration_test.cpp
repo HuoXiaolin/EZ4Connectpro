@@ -1,5 +1,13 @@
 #include <QAction>
 #include <QApplication>
+#include <QDesktopServices>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkProxy>
+#include <QStyleHints>
 #include <QCheckBox>
 #include <QDialogButtonBox>
 #include <QDir>
@@ -10,6 +18,7 @@
 #include <QProcess>
 #include <QTableWidget>
 #include <QListWidget>
+#include <QLocale>
 #include <QMessageBox>
 #include <QPushButton>
 #include <QSettings>
@@ -39,6 +48,15 @@ bool registered = true;
 int registrationWrites = 0;
 }
 
+class ResourceUrlProbe : public QObject
+{
+    Q_OBJECT
+public:
+    QUrl url;
+public slots:
+    void open(const QUrl &value) { url = value; }
+};
+
 // Exercise the real startup UI and connection coordinator without touching UAC or Run.
 bool Privileges::isElevated() { return false; }
 bool Privileges::relaunchElevated(const QString &, bool silent, bool startupBatch)
@@ -63,10 +81,24 @@ bool AutoStart::setEnabled(bool enabled)
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
+    QLocale::setDefault(QLocale(QLocale::Chinese, QLocale::SimplifiedChineseScript, QLocale::China));
+#if defined(Q_OS_WINDOWS)
+    QFont applicationFont = app.font();
+    applicationFont.setFamily("Microsoft YaHei UI");
+    if (applicationFont.pointSizeF() <= 0) applicationFont.setPointSizeF(9.75);
+    app.setFont(applicationFont);
+#endif
     app.setApplicationName("EZ4Connectpro");
     app.setApplicationDisplayName("EZ4Connectpro");
     app.setApplicationVersion(PROJ_VER);
     scenario = CommandLineOptions::value(app.arguments(), "--scenario");
+    if (scenario == "signature") qputenv("EZ4_QA_SIGNATURE_FAILURE", "1");
+    ResourceUrlProbe resourceUrls;
+    if (scenario == "resources")
+    {
+        QDesktopServices::setUrlHandler("http", &resourceUrls, "open");
+        QDesktopServices::setUrlHandler("https", &resourceUrls, "open");
+    }
     QTemporaryDir directory;
     if (!directory.isValid()) return 2;
     ApplicationPaths::setProfileRoot(directory.path());
@@ -86,6 +118,7 @@ int main(int argc, char **argv)
         settings.setValue("Common/ConnectAfterStart", true);
         settings.setValue("Profile/DisplayName", QStringList{"办公线路", "备用线路", "手动线路", "测试线路"}[index]);
         settings.setValue("ZJUConnect/Protocol", "atrust");
+        if (scenario == "resources") settings.setValue(ApplicationConstants::SsoBrowserModeKey, "system");
         settings.setValue("ZJUConnect/AuthType", "psw");
         settings.setValue("ZJUConnect/ServerAddress", "office.example");
         settings.setValue("ZJUConnect/ServerPort", 443);
@@ -100,7 +133,7 @@ int main(int argc, char **argv)
     QStringList selected{QString{}, "office", "missing"};
     if (scenario == "empty") selected.clear();
     if (scenario == "conflict") selected << "lab";
-    if (scenario == "ui") selected = QStringList{QString{}};
+    if (scenario == "ui" || scenario == "signature") selected = QStringList{QString{}};
     if (!storage.saveStartupOptions({scenario != "disabled", true, selected})
         || !storage.setActiveProfile("manual")) return 2;
     ApplicationLogger logger;
@@ -116,6 +149,7 @@ int main(int argc, char **argv)
     };
     bool verified = false;
     int conflictDialogs = 0;
+    int signatureDialogs = 0;
     int cleanShutdowns = 0;
     int ticks = 0;
     QTimer poll;
@@ -125,8 +159,19 @@ int main(int argc, char **argv)
         ++ticks;
         if (auto *message = qobject_cast<QMessageBox *>(QApplication::activeModalWidget()); message && scenario != "devices")
         {
-            if (scenario != "conflict" || message->windowTitle() != "无法启动配置") qFatal("Unexpected startup dialog");
-            ++conflictDialogs;
+            if (scenario == "signature")
+            {
+                if (!message->text().contains("签名校验失败") || !message->text().contains("10000008") || message->text().contains("超时"))
+                    qFatal("Environment signature failure was misreported");
+                const QString capture = qEnvironmentVariable("EZ4_SIGNATURE_CAPTURE");
+                if (!capture.isEmpty() && !message->grab().save(capture)) qFatal("Could not capture signature error");
+                ++signatureDialogs;
+            }
+            else
+            {
+                if (scenario != "conflict" || message->windowTitle() != "无法启动配置") qFatal("Unexpected startup dialog");
+                ++conflictDialogs;
+            }
             message->accept();
         }
         if (verified)
@@ -135,6 +180,15 @@ int main(int argc, char **argv)
             return;
         }
         if (scenario == "ui" || scenario == "elevate") return;
+        if (scenario == "signature")
+        {
+            const auto *runtime = coordinator->connectionFor(storage.profilePath({}));
+            if (!signatureDialogs || !runtime) return;
+            if (signatureDialogs != 1 || runtime->session->state() != ConnectionState::Failed
+                || coordinator->hasActiveConnections()) qFatal("Signature rejection was retried or ignored");
+            verified = true;
+            return;
+        }
         if (scenario == "manual" || scenario == "empty" || scenario == "disabled")
         {
             if (ticks < 15) return;
@@ -158,6 +212,70 @@ int main(int argc, char **argv)
         }
         if (storage.activeProfile() != "manual" || ready("manual")) qFatal("Startup changed or connected the unrelated selected profile");
         verified = true;
+        if (scenario == "resources")
+        {
+            auto *button = window.findChild<QPushButton *>("resourcePageButton");
+            auto *list = window.findChild<QListWidget *>("profileList");
+            if (!button || !list || button->isEnabled()) qFatal("Disconnected resource action should be disabled");
+            for (const auto &id : {QString{}, QString("office")})
+            {
+                for (int i = 0; i < list->count(); ++i)
+                {
+                    if (list->item(i)->data(Qt::UserRole).toString() != id) continue;
+                    list->setCurrentRow(i); emit list->itemClicked(list->item(i)); break;
+                }
+                QEventLoop selection;
+                QTimer::singleShot(0, &selection, &QEventLoop::quit); selection.exec();
+                auto *runtime = coordinator->connectionFor(storage.profilePath(id));
+                auto *core = runtime->session->findChild<QProcess *>();
+                const qint64 pid = core ? core->processId() : 0;
+                if (!pid || !button->isEnabled()) qFatal("Connected resource action unavailable");
+                const QString sid = "resource-fixture-" + id;
+                QFile file(ApplicationPaths::clientDataFile(id, true));
+                if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) qFatal("Could not write resource fixture");
+                file.write(QJsonDocument(QJsonObject{{"cookies", QJsonArray{QJsonObject{
+                    {"scheme", "https"}, {"host", "office.example:443"}, {"name", "sid"}, {"value", sid}}}}}).toJson());
+                file.close();
+                resourceUrls.url = QUrl{}; button->click();
+                if (resourceUrls.url.host() != "127.0.0.1") qFatal("Resource action did not use the local session bridge");
+                QNetworkAccessManager network; network.setProxy(QNetworkProxy::NoProxy);
+                const auto get = [&](const QString &path)
+                {
+                    QNetworkRequest request(resourceUrls.url.resolved(QUrl(path))); request.setTransferTimeout(2000);
+                    QEventLoop loop; auto *reply = network.get(request);
+                    QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit); loop.exec();
+                    const auto data = QJsonDocument::fromJson(reply->readAll()).object(); delete reply; return data;
+                };
+                if (!get("metadata").value("resourceOnly").toBool()) qFatal("Resource action tried to start authentication");
+                const auto data = get("resources");
+                const auto cookies = data.value("cookies").toArray();
+                if (cookies.size() != 1 || cookies.at(0).toObject().value("value") != sid || !ready(id)
+                    || core->processId() != pid) qFatal("Resource action crossed profile sessions or interrupted the VPN core");
+            }
+            const QString capture = qEnvironmentVariable("EZ4_RESOURCES_CAPTURE");
+            if (!capture.isEmpty())
+            {
+                window.show(); window.resize(980, 690);
+                app.styleHints()->setColorScheme(Qt::ColorScheme::Light); app.processEvents();
+                if (!window.grab().save(capture + "-light.png")) qFatal("Could not capture resource button");
+                window.resize(window.minimumSize());
+                app.styleHints()->setColorScheme(Qt::ColorScheme::Dark); app.processEvents();
+                if (!window.grab().save(capture + "-dark.png")) qFatal("Could not capture compact resource button");
+                int actionRow = -1;
+                for (const auto *name : {"pushButton1", "pushButton2", "resourcePageButton", "manageTrustedDevicesButton", "settingPushButton", "profileActionsButton"})
+                {
+                    auto *action = window.findChild<QPushButton *>(name);
+                    if (!action || action->isHidden()) qFatal("Expected direct action missing");
+                    const QPoint position = action->mapTo(&window, QPoint{});
+                    const int center = position.y() + action->height()/2;
+                    if (actionRow < 0) actionRow = center;
+                    if (qAbs(center-actionRow) > 1 || action->width() < action->sizeHint().width()
+                        || position.x() + action->width() > window.width())
+                        qFatal("Direct action %s clipped or not on one row: x=%d width=%d hint=%d y=%d row=%d window=%d",
+                               name, position.x(), action->width(), action->sizeHint().width(), center, actionRow, window.width());
+                }
+            }
+        }
         if (scenario == "devices")
         {
             auto *list=window.findChild<QListWidget *>("profileList");
@@ -176,11 +294,10 @@ int main(int argc, char **argv)
             selection.exec();
             if (storage.activeProfile() != "office") qFatal("Connected profile was not selected");
             auto *button=window.findChild<QPushButton *>("profileActionsButton");
-            auto *action=window.findChild<QAction *>("manageTrustedDevices");
-            if(!button || !button->isEnabled() || !button->menu() || !action)qFatal("Device management blocked while connected");
+            auto *devices=window.findChild<QPushButton *>("manageTrustedDevicesButton");
+            if(!button || !button->menu() || !devices || !devices->isEnabled() || devices->isHidden())qFatal("Direct device management blocked while connected");
             QMetaObject::invokeMethod(button->menu(),"aboutToShow",Qt::DirectConnection);
-            if(!action->isEnabled())qFatal("Connected device management action disabled");
-            for(auto *entry:button->menu()->actions())if(!entry->isSeparator() && entry!=action && entry->isEnabled())qFatal("Destructive profile action enabled while connected");
+            for(auto *entry:button->menu()->actions())if(!entry->isSeparator() && (entry->isEnabled() || entry->text().contains("授信")))qFatal("Destructive action enabled or device manager still hidden in menu");
             QFile cache(ApplicationPaths::clientDataFile("office",true));
             if(!cache.open(QIODevice::WriteOnly|QIODevice::Truncate))qFatal("Could not write mock device data");
             cache.write(R"({"selfId":"this-computer","deviceTrusted":false,"currentTrustDeviceCount":2,"trustDeviceConfig":{"enable":true,"enableSelfBind":1,"limit":2},"data":[{"id":"retired-desktop","deviceName":"Retired desktop"},{"id":"travel-notebook","deviceName":"Retained notebook"}]})");cache.close();
@@ -206,7 +323,7 @@ int main(int argc, char **argv)
                     phase=2;devicePoll.stop();dialog->reject();
                 }
             });
-            devicePoll.start();action->trigger();
+            devicePoll.start();devices->click();
             if(phase!=2)qFatal("Connected device replacement flow incomplete");
         }
         if (scenario == "shutdown")
@@ -279,3 +396,5 @@ int main(int argc, char **argv)
     std::printf("Startup scenario %s passed; no real registry or UAC mutation.\n", qPrintable(scenario));
     return 0;
 }
+
+#include "startupintegration_test.moc"

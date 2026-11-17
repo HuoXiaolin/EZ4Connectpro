@@ -46,7 +46,11 @@ int main(int argc, char *argv[])
     );
 
 #if defined(Q_OS_WINDOWS)
-    QApplication::setFont(QFont("Microsoft YaHei UI", QApplication::font().pointSize()));
+    QFont applicationFont = QApplication::font();
+    applicationFont.setFamily("Microsoft YaHei UI");
+    if (applicationFont.pointSizeF() <= 0)
+        applicationFont.setPointSizeF(9.75);
+    QApplication::setFont(applicationFont);
 #endif
 
 #if defined(Q_OS_WINDOWS)

@@ -1,4 +1,5 @@
 #include "coreexecutable.h"
+#include "infrastructure/storage/applicationpaths.h"
 
 #include <QCoreApplication>
 #include <QFileInfo>
@@ -9,6 +10,19 @@
 
 QString CoreExecutable::path()
 {
+#if defined(Q_OS_WIN)
+    if (!ApplicationPaths::portableLauncher().isEmpty()
+        && QFileInfo(qEnvironmentVariable("EZ4CONNECTPRO_RUNTIME")) == QFileInfo(QCoreApplication::applicationDirPath()))
+    {
+        // The portable launcher verifies and leases this content-addressed bundle.
+        // Keeping the networking executable here preserves its firewall identity.
+        const QFileInfo cached(qEnvironmentVariable("EZ4CONNECTPRO_CORE"));
+        if (cached.isAbsolute() && cached.isFile() && cached.fileName() == "zju-connect.exe")
+        {
+            return cached.absoluteFilePath();
+        }
+    }
+#endif
     const QString fileName =
         QSysInfo::productType() == "windows" ? "zju-connect.exe" : "zju-connect";
     const QString bundledPath = QCoreApplication::applicationDirPath() + "/" + fileName;

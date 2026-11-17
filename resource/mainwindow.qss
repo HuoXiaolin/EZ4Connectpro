@@ -1,15 +1,15 @@
-QLabel, QPlainTextEdit, QMenuBar, QMenu, QComboBox, QLineEdit, QListWidget { font-size: 13px; }
+QLabel, QPlainTextEdit, QMenuBar, QMenu, QComboBox, QLineEdit, QListWidget { font-size: 9.75pt; }
 QMenuBar { padding: 1px 10px; }
 QMenuBar::item { background: transparent; border-radius: 4px; padding: 5px 10px; }
 QMenu { border: 1px solid; padding: 6px; }
 QMenu::item { border-radius: 4px; padding: 7px 24px 7px 10px; }
-#applicationNameLabel { font-size: 17px; font-weight: 650; }
-#applicationSubtitleLabel, #versionLabel, #profileFilterHint { font-size: 12px; }
-#profileSectionLabel, #logTitleLabel { font-size: 15px; font-weight: 650; }
-#profileNameLabel { font-size: 26px; font-weight: 650; }
-#aboutTitleLabel { font-size: 22px; font-weight: 650; }
+#applicationNameLabel { font-size: 12.75pt; font-weight: 650; }
+#applicationSubtitleLabel, #versionLabel, #profileFilterHint { font-size: 9pt; }
+#profileSectionLabel, #logTitleLabel { font-size: 11.25pt; font-weight: 650; }
+#profileNameLabel { font-size: 19.5pt; font-weight: 650; }
+#aboutTitleLabel { font-size: 16.5pt; font-weight: 650; }
 #aboutCreditsLabel { font-weight: 650; }
-#statusTitleLabel, #endpointLabel { font-size: 14px; font-weight: 600; }
+#statusTitleLabel, #endpointLabel { font-size: 10.5pt; font-weight: 600; }
 #statusIndicator { border-radius: 4px; }
 #controlPanel { border: 1px solid; border-radius: 16px; }
 #profileList { border: 0; padding: 1px; outline: 0; background: transparent; }
@@ -22,9 +22,9 @@ QMenu::item { border-radius: 4px; padding: 7px 24px 7px 10px; }
 #routeProfileLabel, #routeAuthLabel, #routeTunnelLabel { padding: 2px 1px 4px; border-bottom: 2px solid transparent; }
 #routeProfileLabel[stageActive="true"], #routeAuthLabel[stageActive="true"], #routeTunnelLabel[stageActive="true"] { font-weight: 650; }
 #pushButton1, #pushButton2, #newProfilePushButton,
-#guidePushButton, #settingPushButton, #profileActionsButton,
+#guidePushButton, #resourcePageButton, #manageTrustedDevicesButton, #settingPushButton, #profileActionsButton,
 #openLogPushButton, #copyLogPushButton, #clearLogPushButton, #aboutCloseButton {
-    min-height: 32px; border: 1px solid; border-radius: 6px; font-size: 13px; padding: 0 12px;
+    min-height: 32px; border: 1px solid; border-radius: 6px; font-size: 9.75pt; padding: 0 12px;
 }
 #profileActionsButton { padding-right: 24px; }
 #profileActionsButton::menu-indicator { subcontrol-position: right center; right: 8px; }
@@ -36,8 +36,8 @@ QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: transparent; height: 0; }
 
 #deviceTrustDialog QLabel, #deviceTrustDialog QLineEdit, #deviceTrustDialog QTableWidget,
-#deviceTrustDialog QHeaderView, #deviceTrustDialog QPushButton { font-size: 14px; }
-#deviceTrustDialog #deviceTrustTitle { font-size: 20px; font-weight: 650; }
+#deviceTrustDialog QHeaderView, #deviceTrustDialog QPushButton { font-size: 10.5pt; }
+#deviceTrustDialog #deviceTrustTitle { font-size: 15pt; font-weight: 650; }
 #deviceTrustDialog QPushButton { border: 1px solid; border-radius: 6px; padding: 0 10px; }
 #deviceTrustTable { border: 1px solid; border-radius: 6px; }
 #deviceTrustTable QHeaderView::section { border: 0; border-bottom: 1px solid; padding: 5px 6px; }

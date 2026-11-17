@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "EZ4Connectpro 单点登录回传",
-  "version": "1.0.0",
+  "version": "1.2.0",
   "description": "将工作台发起的 aTrust 单点登录票据回传到本机。",
-  "permissions": ["declarativeNetRequestWithHostAccess", "alarms", "storage"],
+  "permissions": ["declarativeNetRequestWithHostAccess", "alarms", "storage", "cookies"],
   "host_permissions": ["http://127.0.0.1/*"],
   "optional_host_permissions": ["http://*/*", "https://*/*"],
   "background": {
@@ -18,7 +18,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["http://127.0.0.1/ez4connectpro/*/begin"],
+      "matches": ["http://127.0.0.1/ez4connectpro/*/begin", "http://127.0.0.1/ez4connectpro/*/return"],
       "js": ["launch.js"],
       "run_at": "document_end"
     }
