@@ -1,6 +1,8 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDebug>
+#include <QDir>
+#include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFile>
 #include <QJsonDocument>
@@ -9,6 +11,10 @@
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QTcpSocket>
+#include <cstdio>
+#ifdef Q_OS_WIN
+#include <windows.h>
+#endif
 
 #include "infrastructure/browser/browserssosession.h"
 #include "infrastructure/browser/temporarybrowserssosession.h"
@@ -17,6 +23,25 @@
 
 namespace
 {
+#ifdef Q_OS_WIN
+HWND fixtureWindow(const QString &title)
+{
+    struct Search { QString title; HWND window; } search{title, nullptr};
+    EnumDesktopWindows(GetThreadDesktop(GetCurrentThreadId()), [](HWND window, LPARAM value) -> BOOL
+    {
+        auto *search = reinterpret_cast<Search *>(value);
+        wchar_t text[256]{};
+        if (IsWindowVisible(window) && GetWindowTextW(window, text, 256)
+            && QString::fromWCharArray(text).startsWith(search->title))
+        {
+            search->window = window;
+            return FALSE;
+        }
+        return TRUE;
+    }, reinterpret_cast<LPARAM>(&search));
+    return search.window;
+}
+#endif
 bool writeGatewayFixture(const QString &file, const QUrl &gateway)
 {
     const auto cookie = [&](const QString &host, const QString &name)
@@ -29,9 +54,50 @@ bool writeGatewayFixture(const QString &file, const QUrl &gateway)
         && output.write(QJsonDocument(QJsonObject{{"cookies", cookies}}).toJson()) > 0;
 }
 
-int runPortalFixture(QCoreApplication &app, const QString &program, bool direct = false)
+// Only the Chromium launched by this fixture uses its private temporary root.
+bool closeFixturePortalTab(const QTemporaryDir &root, const QUrl &portal)
+{
+    const auto dirs = QDir(root.path()).entryList({"EZ4Connectpro-login-*"}, QDir::Dirs | QDir::NoDotAndDotDot);
+    if (dirs.size() != 1) return false;
+    QFile endpoint(root.filePath(dirs.first() + "/DevToolsActivePort"));
+    if (!endpoint.open(QIODevice::ReadOnly)) return false;
+    bool ok = false;
+    const auto port = endpoint.readLine(8).trimmed().toUShort(&ok);
+    if (!ok || !port) return false;
+    QNetworkAccessManager controller;
+    controller.setProxy(QNetworkProxy::NoProxy);
+    const auto request = [&](const QString &action, bool create = false)
+    {
+        QNetworkRequest command(QUrl(QString("http://127.0.0.1:%1/json/").arg(port) + action));
+        command.setTransferTimeout(2000);
+        auto *reply = create ? controller.put(command, QByteArray{}) : controller.get(command);
+        QEventLoop loop;
+        QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+        loop.exec();
+        return reply->error() == QNetworkReply::NoError ? reply->readAll() : QByteArray{};
+    };
+    const auto tabs = QJsonDocument::fromJson(request("list")).array();
+    for (const auto &entry : tabs)
+    {
+        const auto tab = entry.toObject();
+        if (tab.value("url").toString() != portal.toString() || tab.value("type") != "page") continue;
+        if (QJsonDocument::fromJson(request("new?about:blank", true)).object().value("id").toString().isEmpty()) return false;
+        return !request("close/" + tab.value("id").toString()).isEmpty();
+    }
+    return false;
+}
+
+enum class PortalClose { None, Window, Tab };
+
+int runPortalFixture(QCoreApplication &app, const QString &program, bool direct = false, PortalClose close = PortalClose::None)
 {
     QTemporaryDir root;
+    if (close == PortalClose::Tab)
+    {
+        const QByteArray temp = QFile::encodeName(QDir::toNativeSeparators(root.path()));
+        qputenv("TMP", temp);
+        qputenv("TEMP", temp);
+    }
     QTcpServer server;
     server.setProxy(QNetworkProxy::NoProxy);
     if (!server.listen(QHostAddress::LocalHost)) return 1;
@@ -41,9 +107,15 @@ int runPortalFixture(QCoreApplication &app, const QString &program, bool direct 
     TemporaryBrowserSsoSession browser;
     int callbacks = 0;
     int portalRequests = 0;
+    const QString title = "EZ4 portal fixture " + QString::number(server.serverPort());
+    bool portalVerified = false;
     bool loginRequested = false;
     bool callbackConsumed = false;
-    QObject::connect(&browser, &TemporaryBrowserSsoSession::failed, &app, [&](const QString &) { app.exit(1); });
+    QObject::connect(&browser, &TemporaryBrowserSsoSession::failed, &app, [&](const QString &reason)
+    {
+        qCritical().noquote() << reason;
+        app.exit(1);
+    });
     QObject::connect(&browser, &TemporaryBrowserSsoSession::callbackReceived, &app, [&](const QByteArray &)
     {
         ++callbacks;
@@ -69,12 +141,17 @@ int runPortalFixture(QCoreApplication &app, const QString &program, bool direct 
                 ++portalRequests;
                 const bool ok = callbacks == (direct ? 0 : 1) && loginRequested == !direct && !callbackConsumed && bytes.contains("sid=resource-fixture")
                     && !bytes.contains("foreign=") && !bytes.contains("wrong-port=");
-                socket->write("HTTP/1.1 200 OK\r\nContent-Length: 20\r\nConnection: close\r\n\r\nResources are ready.");
+                const QByteArray html = "<!doctype html><title>" + title.toUtf8() + "</title>Resources are ready.";
+                socket->write("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: " + QByteArray::number(html.size())
+                              + "\r\nConnection: close\r\n\r\n" + html);
                 qInfo() << "Same-browser resources verified:" << ok << "callbacks" << callbacks
                         << "ticketConsumedByBrowser" << callbackConsumed << "sessionCookie" << bytes.contains("sid=resource-fixture")
                         << "foreignCookie" << bytes.contains("foreign=") << "wrongPortCookie" << bytes.contains("wrong-port=");
-                if (ok && direct && portalRequests == 1)
+                if (ok && close == PortalClose::Tab && portalRequests == 1)
+                    portalVerified = true;
+                else if (ok && direct && portalRequests == 1)
                     QTimer::singleShot(300, &browser, [&]() { browser.openResources(cache); });
+                else if (ok && close == PortalClose::Window) portalVerified = true;
                 else QTimer::singleShot(300, &app, [&, ok]() { app.exit(ok ? 0 : 1); });
             }
             else
@@ -85,13 +162,58 @@ int runPortalFixture(QCoreApplication &app, const QString &program, bool direct 
             socket->disconnectFromHost();
         });
     });
+#ifdef Q_OS_WIN
+    QTimer windowPoll;
+    bool closeSent = false;
+    bool reopening = false;
+    QObject::connect(&windowPoll, &QTimer::timeout, &app, [&]()
+    {
+        if (!portalVerified) return;
+        if (close == PortalClose::Tab)
+        {
+            if (!closeSent && fixtureWindow(title))
+            {
+                closeSent = true;
+                windowPoll.stop();
+                if (!closeFixturePortalTab(root, gateway.resolved(QUrl("/portal/")))) { app.exit(1); return; }
+                windowPoll.start();
+            }
+            else if (closeSent && !browser.isActive()) app.exit(1);
+            else if (closeSent && !reopening && !browser.hasResourceTab())
+            {
+                reopening = true;
+                browser.openResources(cache);
+            }
+        }
+        else if (!closeSent)
+        {
+            if (const auto window = fixtureWindow(title)) closeSent = PostMessageW(window, WM_CLOSE, 0, 0);
+        }
+        else if (!browser.isActive() && !fixtureWindow(title))
+        {
+            qInfo() << "Resource window closed without a login failure; callbacks" << callbacks;
+            app.exit(0);
+        }
+    });
+    if (close != PortalClose::None) windowPoll.start(40);
+#endif
     QTimer::singleShot(0, &app, [&]()
     {
         if (direct) browser.startResources(gateway, cache, program);
         else browser.start(gateway.resolved(QUrl("/login")), gateway, program, {}, true);
     });
     QTimer::singleShot(25000, &app, [&]() { app.exit(2); });
-    return app.exec();
+    if (close == PortalClose::None) return app.exec();
+    static bool closeWarning = false;
+    const auto previous = qInstallMessageHandler([](QtMsgType type, const QMessageLogContext &, const QString &message)
+    {
+        std::fprintf(stderr, "%s\n", message.toUtf8().constData());
+        if (type == QtWarningMsg && (message.contains("QSocketNotifier") || message.startsWith("临时浏览器")))
+            closeWarning = true;
+    });
+    const int result = app.exec();
+    qInstallMessageHandler(previous);
+    return closeWarning ? 1 : result;
 }
 
 bool checksProtectedLoginCache()
@@ -152,6 +274,20 @@ int runRememberChild(QCoreApplication &app, const QStringList &args)
     const QUrl login = gateway.resolved(QUrl("/" + phase));
     TemporaryBrowserSsoSession browser;
     int silent = 0, interactive = 0;
+    QElapsedTimer elapsed;
+    qint64 visibleMs = -1;
+#ifdef Q_OS_WIN
+    QTimer windowPoll;
+    QObject::connect(&windowPoll, &QTimer::timeout, &app, [&]()
+    {
+        if (fixtureWindow("EZ4 manual fixture " + QString::number(gateway.port())))
+        {
+            visibleMs = elapsed.elapsed();
+            windowPoll.stop();
+        }
+    });
+    if (phase == "manual") windowPoll.start(25);
+#endif
     QObject::connect(&browser, &TemporaryBrowserSsoSession::restoringLogin, &app, [&]() { ++silent; });
     QObject::connect(&browser, &TemporaryBrowserSsoSession::interactionRequired, &app, [&]() { ++interactive; });
     QObject::connect(&browser, &TemporaryBrowserSsoSession::failed, &app, [&](const QString &message)
@@ -161,19 +297,27 @@ int runRememberChild(QCoreApplication &app, const QStringList &args)
     });
     QObject::connect(&browser, &TemporaryBrowserSsoSession::callbackReceived, &app, [&](const QByteArray &callback)
     {
-        const int expectedSilent = phase == "seed" ? 0 : 1;
+        const int expectedSilent = phase == "seed" || phase == "manual" ? 0 : 1;
         const int expectedInteractive = phase == "resume" ? 0 : 1;
         const QByteArray expected = gateway.resolved(QUrl("/passport/v1/auth/cas?ticket=ST-" + phase)).toEncoded();
-        const bool ok = callback == expected && silent == expectedSilent && interactive == expectedInteractive;
-        qInfo() << "Login phase" << phase << "silent" << silent << "interactive" << interactive << "verified" << ok;
+        const bool ok = callback == expected && silent == expectedSilent && interactive == expectedInteractive
+            && (phase != "manual" || (visibleMs >= 0 && visibleMs < 10000));
+        qInfo() << "Login phase" << phase << "silent" << silent << "interactive" << interactive
+                << "visible ms" << visibleMs << "verified" << ok;
         app.exit(ok ? 0 : 1);
     });
-    QTimer::singleShot(0, &app, [&]() { browser.start(login, gateway, args[2], args[4]); });
+    QTimer::singleShot(0, &app, [&]()
+    {
+        elapsed.start();
+        using LaunchMode = TemporaryBrowserSsoSession::LaunchMode;
+        browser.start(login, gateway, args[2], args[4], false,
+                      phase == "manual" ? LaunchMode::ShowWindow : LaunchMode::RestoreInBackground);
+    });
     QTimer::singleShot(26000, &app, [&]() { app.exit(2); });
     return app.exec();
 }
 
-int runRememberFixture(QCoreApplication &app, const QString &program, bool expired)
+int runRememberFixture(QCoreApplication &app, const QString &program, const QString &phaseName)
 {
     QTemporaryDir root;
     QTcpServer server;
@@ -191,7 +335,15 @@ int runRememberFixture(QCoreApplication &app, const QString &program, bool expir
             request += client->readAll();
             if (!request.contains("\r\n\r\n")) return;
             const auto target = request.split(' ').value(1);
-            if (target == "/seed" || target == "/resume" || target == "/expired")
+            if (target == "/manual" && request.contains("CAS-fixture=remembered"))
+            {
+                ++restores;
+                const QByteArray body = "<!doctype html><title>EZ4 manual fixture " + QByteArray::number(server.serverPort())
+                    + "</title><script>setTimeout(() => location.replace('/passport/v1/auth/cas?ticket=ST-manual'), 1200)</script>";
+                client->write("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: " + QByteArray::number(body.size())
+                              + "\r\nConnection: close\r\n\r\n" + body);
+            }
+            else if (target == "/seed" || target == "/resume" || target == "/expired")
             {
                 const bool hasCookie = request.contains("CAS-fixture=remembered");
                 const bool restored = target != "/seed" && hasCookie;
@@ -227,8 +379,8 @@ int runRememberFixture(QCoreApplication &app, const QString &program, bool expir
     QObject::connect(&child, &QProcess::finished, &app, [&](int code, QProcess::ExitStatus status)
     {
         if (code != 0 || status != QProcess::NormalExit || gatewayHit) { app.exit(1); return; }
-        if (phase++ == 0) launch(expired ? "expired" : "resume");
-        else app.exit(restores == (expired ? 2 : 1) ? 0 : 1);
+        if (phase++ == 0) launch(phaseName);
+        else app.exit(restores == (phaseName == "expired" ? 2 : 1) ? 0 : 1);
     });
     QTimer::singleShot(0, &app, [&]() { launch("seed"); });
     QTimer::singleShot(29000, &app, [&]() { app.exit(2); });
@@ -357,6 +509,26 @@ bool checksResourceBridge()
     const auto data = QJsonDocument::fromJson(response.second).object();
     return response.first == 200 && data.value("url") == "https://vpn.example/portal/"
         && data.value("cookies").toArray().size() == 2 && bridge.entryUrl().isEmpty();
+}
+
+bool checksClosedBridgeTimeouts()
+{
+    QTemporaryDir root;
+    const QUrl gateway("https://vpn.example");
+    const QString cache = root.filePath("client-data.json");
+    if (!writeGatewayFixture(cache, gateway)) return false;
+    BrowserSsoSession bridge;
+    int failures = 0;
+    QObject::connect(&bridge, &BrowserSsoSession::failed, [&]() { ++failures; });
+    const auto expire = [&]() { return QMetaObject::invokeMethod(&bridge, "handleTimeout") && bridge.entryUrl().isEmpty(); };
+    if (bridge.prepareResources(gateway, cache).isEmpty() || !expire() || failures) return false;
+    const auto begin = bridge.prepare(gateway.resolved(QUrl("/login")), gateway, true);
+    QNetworkAccessManager network;
+    network.setProxy(QNetworkProxy::NoProxy);
+    const int accepted = post(network, begin.resolved(QUrl("return")), ("http://" + begin.authority()).toUtf8(),
+                              "https://vpn.example/passport/v1/auth/cas?ticket=fixture");
+    if (accepted != 204 || !expire() || failures) return false;
+    return !bridge.prepare(gateway.resolved(QUrl("/login")), gateway).isEmpty() && expire() && failures == 1;
 }
 
 bool checksIndependentSessions()
@@ -495,9 +667,15 @@ int main(int argc, char *argv[])
     const QStringList arguments = app.arguments();
     if (arguments.size() == 3 && arguments[1] == "--portal") return runPortalFixture(app, arguments[2]);
     if (arguments.size() == 3 && arguments[1] == "--resources") return runPortalFixture(app, arguments[2], true);
+#ifdef Q_OS_WIN
+    if (arguments.size() == 3 && arguments[1] == "--portal-close") return runPortalFixture(app, arguments[2], false, PortalClose::Window);
+    if (arguments.size() == 3 && arguments[1] == "--resources-close") return runPortalFixture(app, arguments[2], true, PortalClose::Window);
+    if (arguments.size() == 3 && arguments[1] == "--resource-tab") return runPortalFixture(app, arguments[2], true, PortalClose::Tab);
+    if (arguments.size() == 3 && arguments[1] == "--manual-cache") return runRememberFixture(app, arguments[2], "manual");
+#endif
     if (arguments.size() == 6 && arguments[1] == "--remember-child") return runRememberChild(app, arguments);
     if (arguments.size() == 3 && (arguments[1] == "--remember" || arguments[1] == "--expired"))
-        return runRememberFixture(app, arguments[2], arguments[1] == "--expired");
+        return runRememberFixture(app, arguments[2], arguments[1] == "--expired" ? "expired" : "resume");
     if (arguments.size() == 3 && arguments.at(1) == "--serve")
     {
         return runBrowserFixture(app, arguments.at(2));
@@ -507,7 +685,7 @@ int main(int argc, char *argv[])
         return runBrowserFixture(app, {}, arguments.at(2));
     }
     if (!checksGatewayAndTicket() || !checksIndependentSessions() || !checksProtectedLoginCache()
-        || !checksResourceBridge() || !checksStandaloneResourceBridge())
+        || !checksResourceBridge() || !checksStandaloneResourceBridge() || !checksClosedBridgeTimeouts())
     {
         qCritical() << "SSO callback validation failed";
         return 1;

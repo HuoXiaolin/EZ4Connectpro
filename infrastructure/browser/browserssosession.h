@@ -24,6 +24,9 @@ signals:
     void callbackReceived(const QByteArray &url);
     void failed(const QString &message);
 
+private slots:
+    void handleTimeout();
+
 private:
     void acceptClient();
     void handleRequest(QTcpSocket *client, const QByteArray &method,

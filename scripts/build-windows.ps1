@@ -4,7 +4,8 @@ param(
     [string]$SdkRoot,
     [string]$GoModules,
     [switch]$Test,
-    [switch]$Package
+    [switch]$Package,
+    [switch]$Release
 )
 
 $ErrorActionPreference = "Stop"
@@ -30,15 +31,46 @@ $ninja = Join-Path $ToolsRoot "mingw/mingw64/bin/ninja.exe"
 foreach ($file in @($cmake, $ninja, "$qt/bin/windeployqt.exe", "$compiler/g++.exe", "$go/go.exe")) {
     if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "Required existing tool is missing: $file" }
 }
-if ($Package -and -not (Test-Path -LiteralPath $GoModules -PathType Container)) {
+if (($Package -or $Release) -and -not (Test-Path -LiteralPath $GoModules -PathType Container)) {
     throw "Existing Go module dependencies are missing: $GoModules"
 }
+if ($Release -and -not $PSBoundParameters.ContainsKey("BuildDir")) {
+    $BuildDir = "build/release-candidate/windows-x64"
+}
+
+$releaseLock = $null
+$hasReleaseLock = $false
 $previous = @{}
 foreach ($name in @('PATH', 'GOTOOLCHAIN', 'GOPROXY', 'GOSUMDB', 'GOMODCACHE', 'GOCACHE', 'GOPATH')) {
     $previous[$name] = [Environment]::GetEnvironmentVariable($name)
 }
 Push-Location $repoRoot
 try {
+    $versionArg = '-UREL_VER'
+    if ($Package -or $Release) {
+        $releaseLock = [Threading.Mutex]::new($false, 'Local\EZ4Connectpro-WindowsRelease')
+        try {
+            $hasReleaseLock = $releaseLock.WaitOne(0)
+        } catch [Threading.AbandonedMutexException] {
+            $hasReleaseLock = $true
+        }
+        if (-not $hasReleaseLock) { throw "An EZ4Connectpro Windows package is already being built." }
+    }
+    if ($Release) {
+        $python = Join-Path $ToolsRoot "python_3.12.14/python.exe"
+        $pythonArgs = @()
+        if (-not (Test-Path -LiteralPath $python -PathType Leaf)) {
+            $python = (Get-Command py.exe -ErrorAction Stop).Source
+            $pythonArgs = @('-3')
+        }
+        $delivery = Join-Path $PSScriptRoot "sync-delivery.py"
+        $planJson = & $python @pythonArgs $delivery --plan
+        if ($LASTEXITCODE -ne 0) { throw "Could not determine the Windows release version." }
+        $plan = $planJson | ConvertFrom-Json
+        $versionArg = "-DREL_VER=$($plan.version)"
+        Write-Output "Planned Windows release $($plan.version) ($($plan.date))"
+    }
+
     $env:PATH = "$qt/bin;$compiler;$go;$env:PATH"
     $env:GOTOOLCHAIN = "local"
     $env:GOPROXY = "off"
@@ -46,7 +78,7 @@ try {
     $env:GOMODCACHE = $GoModules
     $env:GOCACHE = Join-Path $repoRoot "build/go-cache"
     $env:GOPATH = Join-Path $repoRoot "build/go-path"
-    & $cmake -S . -B $BuildDir -G Ninja '-UREL_VER' '-DCMAKE_BUILD_TYPE=Release' '-DBUILD_TESTING=ON' `
+    & $cmake -S . -B $BuildDir -G Ninja $versionArg '-DNIGHTLY_BUILD=OFF' '-DCMAKE_BUILD_TYPE=Release' '-DBUILD_TESTING=ON' `
         "-DCMAKE_PREFIX_PATH=$qt" "-DCMAKE_C_COMPILER=$compiler/gcc.exe" `
         "-DCMAKE_CXX_COMPILER=$compiler/g++.exe" "-DCMAKE_MAKE_PROGRAM=$ninja"
     if ($LASTEXITCODE -ne 0) { throw "CMake configuration failed" }
@@ -69,10 +101,19 @@ try {
         $deviceTests = (New-Item -ItemType Directory -Path (Join-Path $repoRoot 'build/device-management') -Force).FullName
         & (Join-Path $PSScriptRoot 'build-windows-core.ps1') -OutputDir $deviceTests -TestDeviceManagement
     }
-    if ($Package) {
+    if ($Release) {
+        $candidate = Join-Path $repoRoot "build/release-candidate/EZ4Connectpro-windows-x64.exe"
+        & (Join-Path $PSScriptRoot "package-windows-single-file.ps1") -BuildDir $BuildDir `
+            -OutputFile $candidate -ExpectedVersion $plan.version
+        $hash = (Get-FileHash -LiteralPath $candidate -Algorithm SHA256).Hash.ToLowerInvariant()
+        & $python @pythonArgs $delivery $hash --candidate $candidate --version $plan.version --date $plan.date
+        if ($LASTEXITCODE -ne 0) { throw "Local delivery failed. Run the release again to retry." }
+    } elseif ($Package) {
         & (Join-Path $PSScriptRoot "package-windows-single-file.ps1") -BuildDir $BuildDir
     }
 } finally {
     Pop-Location
     foreach ($name in $previous.Keys) { [Environment]::SetEnvironmentVariable($name, $previous[$name]) }
+    if ($hasReleaseLock) { $releaseLock.ReleaseMutex() }
+    if ($releaseLock) { $releaseLock.Dispose() }
 }

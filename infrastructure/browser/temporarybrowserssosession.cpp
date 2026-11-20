@@ -163,7 +163,7 @@ TemporaryBrowserSsoSession::TemporaryBrowserSsoSession(QObject *parent) : QObjec
     pageRetry.setInterval(150);
     timeout.setSingleShot(true);
     silentTimeout.setSingleShot(true);
-    silentTimeout.setInterval(15000);
+    silentTimeout.setInterval(2500);
     saveTimeout.setSingleShot(true);
     saveTimeout.setInterval(3000);
     connect(&silentTimeout, &QTimer::timeout, this, &TemporaryBrowserSsoSession::showInteractiveBrowser);
@@ -185,7 +185,7 @@ TemporaryBrowserSsoSession::TemporaryBrowserSsoSession(QObject *parent) : QObjec
     });
     connect(&process, &QProcess::finished, this, [this]()
     {
-        fail(QStringLiteral("临时浏览器已关闭，可以重新打开登录页。"));
+        browserClosed(QStringLiteral("临时浏览器已关闭，可以重新打开登录页。"));
     });
     connect(&socket, &QWebSocket::connected, this, [this]()
     {
@@ -199,11 +199,16 @@ TemporaryBrowserSsoSession::TemporaryBrowserSsoSession(QObject *parent) : QObjec
         }
     });
     connect(&socket, &QWebSocket::textMessageReceived, this, &TemporaryBrowserSsoSession::handleMessage);
-    connect(&socket, &QWebSocket::disconnected, this, [this]() { fail(protocolError); });
-    connect(&socket, &QWebSocket::errorOccurred, this, [this]()
+    connect(&socket, &QWebSocket::disconnected, this, [this]() { browserClosed(protocolError); });
+    connect(&socket, &QWebSocket::errorOccurred, this, [this](QAbstractSocket::SocketError error)
     {
         if (active)
         {
+            if (callbackDelivered && (error == QAbstractSocket::RemoteHostClosedError || resourceTabClosed || portalOpened))
+            {
+                browserClosed(protocolError);
+                return;
+            }
             qWarning().noquote() << "临时浏览器本地连接失败" << socket.errorString();
             fail(protocolError);
         }
@@ -215,7 +220,8 @@ TemporaryBrowserSsoSession::~TemporaryBrowserSsoSession()
     cancel();
 }
 
-void TemporaryBrowserSsoSession::start(const QUrl &url, const QUrl &server, const QString &browser, const QString &loginCache, bool resources)
+void TemporaryBrowserSsoSession::start(const QUrl &url, const QUrl &server, const QString &browser,
+                                       const QString &loginCache, bool resources, LaunchMode mode)
 {
     cancel();
     if (process.state() != QProcess::NotRunning || !isHttpUrl(url) || !isHttpUrl(server))
@@ -249,7 +255,7 @@ void TemporaryBrowserSsoSession::start(const QUrl &url, const QUrl &server, cons
     browserProgram = program;
     cachePath = gecko ? QString{} : loginCache;
     savedCookies = BrowserLoginCache::load(cachePath, gateway);
-    silent = !savedCookies.isEmpty();
+    silent = mode == LaunchMode::RestoreInBackground && !savedCookies.isEmpty();
     if (silent) emit restoringLogin();
     else emit interactionRequired();
     launchBrowser();
@@ -384,25 +390,29 @@ void TemporaryBrowserSsoSession::findLoginPage()
             if (gecko)
             {
                 contextId = page.value("context").toString();
-                send("session.subscribe", {{"events", QJsonArray{"network.beforeRequestSent"}}},
+                send("session.subscribe", {{"events", QJsonArray{"network.beforeRequestSent", "browsingContext.contextDestroyed"}}},
                      [this](const QJsonObject &) { enableInterception(); });
             }
             else
             {
-                send("Target.attachToTarget", {{"targetId", page.value("targetId")}, {"flatten", true}},
-                     [this](const QJsonObject &attached)
-                {
-                    sessionId = attached.value("sessionId").toString();
-                    send("Page.getFrameTree", {}, [this](const QJsonObject &frame)
-                    {
-                        contextId = frame.value("frameTree").toObject().value("frame").toObject().value("id").toString();
-                        enableInterception();
-                    });
-                });
+                attachChromiumPage(page.value("targetId").toString());
             }
             return;
         }
         pageRetry.start();
+    });
+}
+
+void TemporaryBrowserSsoSession::attachChromiumPage(const QString &target)
+{
+    send("Target.attachToTarget", {{"targetId", target}, {"flatten", true}}, [this](const QJsonObject &attached)
+    {
+        sessionId = attached.value("sessionId").toString();
+        send("Page.getFrameTree", {}, [this](const QJsonObject &frame)
+        {
+            contextId = frame.value("frameTree").toObject().value("frame").toObject().value("id").toString();
+            enableInterception();
+        });
     });
 }
 
@@ -488,6 +498,15 @@ void TemporaryBrowserSsoSession::send(const QString &method, const QJsonObject &
                 // Firefox reports the intentionally blocked CAS navigation as an error.
                 // Once its ticket is captured, that late reply must not close the resource window.
                 if (initialGeckoNavigation && !callback.isEmpty()) return;
+                const QJsonValue error = event.value("error");
+                const QString detail = error.toObject().value("message").toString();
+                if (callbackDelivered && (error.toString() == "no such frame" || error.toString() == "no such window"
+                    || detail.contains("No target with given id") || detail.contains("Session with given id not found")
+                    || detail.contains("target navigated or closed", Qt::CaseInsensitive)))
+                {
+                    resourceTabWasClosed();
+                    return;
+                }
                 qWarning() << "临时浏览器控制命令失败" << method;
                 if (required) fail(protocolError);
                 else reply({});
@@ -519,6 +538,18 @@ void TemporaryBrowserSsoSession::handleMessage(const QString &message)
         return;
     }
     const QString method = event.value("method").toString();
+    const QJsonObject params = event.value("params").toObject();
+    if ((!sessionId.isEmpty() && method == "Target.detachedFromTarget" && params.value("sessionId") == sessionId)
+        || (!contextId.isEmpty() && method == "browsingContext.contextDestroyed" && params.value("context") == contextId))
+    {
+        if (!callbackDelivered)
+        {
+            fail(QStringLiteral("登录页已关闭，可以重新打开登录页。"));
+            return;
+        }
+        resourceTabWasClosed();
+        return;
+    }
     if ((gecko && method == "network.beforeRequestSent")
         || (!gecko && method == "Fetch.requestPaused" && event.value("sessionId").toString() == sessionId))
     {
@@ -600,20 +631,37 @@ void TemporaryBrowserSsoSession::complete()
 
 void TemporaryBrowserSsoSession::openResources(const QString &clientDataFile)
 {
-    if (!active || !callbackDelivered || contextId.isEmpty()) return;
+    if (!active || !callbackDelivered) return;
+    if (resourceTabClosed)
+    {
+        resourceTabClosed = false;
+        resourceOnly = true;
+        resourceDataFile = clientDataFile;
+        timeout.start(20000);
+        if (gecko)
+            send("browsingContext.create", {{"type", "tab"}}, [this](const QJsonObject &result)
+            {
+                contextId = result.value("context").toString();
+                enableInterception();
+            });
+        else
+            send("Target.createTarget", {{"url", "about:blank"}}, [this](const QJsonObject &result)
+            { attachChromiumPage(result.value("targetId").toString()); });
+        return;
+    }
+    if (contextId.isEmpty()) return;
     const QJsonArray cookies = BrowserLoginCache::gatewaySessionCookies(clientDataFile, gateway);
     if (cookies.isEmpty())
     {
         emit failed(QStringLiteral("当前线路的资源页会话不可用，请检查 VPN 连接状态。"));
         return;
     }
-    resourcePageOpened = false;
     const QUrl portal = gateway.resolved(QUrl("/portal/"));
     const auto open = [this, portal]()
     {
         const auto navigated = [this](const QJsonObject &)
         {
-            resourcePageOpened = true;
+            portalOpened = true;
             timeout.stop();
             send(gecko ? "browsingContext.activate" : "Page.bringToFront",
                  gecko ? QJsonObject{{"context", contextId}} : QJsonObject{}, {}, false);
@@ -686,7 +734,7 @@ void TemporaryBrowserSsoSession::stopBrowser()
             process.waitForFinished(500);
         }
     }
-    socket.abort();
+    if (socket.state() != QAbstractSocket::UnconnectedState) socket.abort();
 }
 
 void TemporaryBrowserSsoSession::cancel()
@@ -695,7 +743,8 @@ void TemporaryBrowserSsoSession::cancel()
     silent = false;
     savedCookies = {};
     callbackDelivered = false;
-    resourcePageOpened = false;
+    resourceTabClosed = false;
+    portalOpened = false;
     resourceOnly = false;
     resourceDataFile.clear();
     if (process.state() == QProcess::NotRunning)
@@ -704,15 +753,34 @@ void TemporaryBrowserSsoSession::cancel()
     }
 }
 
+void TemporaryBrowserSsoSession::resourceTabWasClosed()
+{
+    // Leave other tabs running. An explicit request can create a new portal tab.
+    resourceTabClosed = true;
+    sessionId.clear();
+    contextId.clear();
+    interceptId.clear();
+    replies.clear();
+    timeout.stop();
+}
+
+void TemporaryBrowserSsoSession::browserClosed(const QString &loginError)
+{
+    if (!active) return;
+    if (!callbackDelivered)
+    {
+        fail(loginError);
+        return;
+    }
+    // Qt is still dispatching the socket/process close. Tear down after it unwinds.
+    active = false;
+    QTimer::singleShot(0, this, [this]() { if (!active) cancel(); });
+}
+
 void TemporaryBrowserSsoSession::fail(const QString &message)
 {
     if (active)
     {
-        if (callbackDelivered && (!resourceOnly || resourcePageOpened))
-        {
-            cancel(); // Closing the resource window must not cancel the VPN connection.
-            return;
-        }
         if (silent && callback.isEmpty())
         {
             showInteractiveBrowser();

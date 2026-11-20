@@ -9,7 +9,7 @@ EZ4Connectpro 是面向深信服 aTrust 和 EasyConnect 的轻量 VPN 工作台�
 | 版本 | 发布文件 | 展开后的运行文件 |
 | --- | ---: | ---: |
 | EZ4Connect v1.9.1 | ZIP，150.9 MiB | 354.4 MiB |
-| EZ4Connectpro 2.1.0 | 单文件 EXE，27.4 MiB | 56.8 MiB |
+| EZ4Connectpro 当前版 | 单文件 EXE，27.4 MiB | 56.8 MiB |
 
 同为 Windows x64，发布文件减少约 **123.5 MiB**。Pro 版改用外部浏览器完成单点登录，移除了内置的 Qt WebEngine。便携 EXE 仍包含 Qt 运行库、zju-connect 和 Wintun。连接核心保存在固定的应用数据目录，避免每次启动都因路径变化触发新的防火墙询问；界面运行文件展开到临时目录，正常退出后清理。 [上游 v1.9.1 发布附件](https://github.com/chenx-dust/EZ4Connect/releases/expanded_assets/v1.9.1)
 
@@ -24,9 +24,9 @@ EZ4Connectpro 是面向深信服 aTrust 和 EasyConnect 的轻量 VPN 工作台�
 - **多配置工作台**。集中管理 aTrust 和 EasyConnect，按名称、协议或网关查找配置。每条连接各自显示状态和代理端口，活动日志带有配置标记。
 - **配置备份和开机连接**。在「文件」导入或导出 INI，在「设置 → 启动设置」统一管理静默启动，可勾选多条线路在登录系统后自动连接。 [工作台使用说明](docs/VPN_WORKSPACE.md)
 - **托盘查看和管理连接**。图标右上角黄点表示连接或重连中，绿点表示已连接。鼠标悬停可查看线路和通道状态，右键可独立操作每条线路或断开全部连接。
-- **外部浏览器登录与恢复**。aTrust 的 CAS 和 HTTPS OAuth2 默认使用临时浏览器配置，自动接回登录票据。Windows 上使用 Chrome / Edge 时，按线路加密保留登录 Cookie，下次需要认证时先在后台尝试恢复；需要人工验证时再显示浏览器。也可选择系统默认浏览器及回传扩展。 [浏览器登录说明](docs/VPN_WORKSPACE.md#单点登录的两种浏览器方式)
+- **外部浏览器登录与恢复**。手动连接 aTrust 时，需要 CAS 或 HTTPS OAuth2 认证就直接打开浏览器。Windows 上的临时 Chrome / Edge 会复用本线路加密保存的登录记录，可用时自动继续。开机自连和后台重连优先静默恢复。也可选择系统默认浏览器及回传扩展。 [浏览器登录说明](docs/VPN_WORKSPACE.md#单点登录的两种浏览器方式)
 - **aTrust 授信设备管理**。连接中也能查看设备、添加本机和解绑旧设备。本机未授信且名额已满时，选择旧设备，通过「解绑并添加本机」完成换绑。操作受服务器自助管理策略约束。 [设备管理说明](docs/VPN_WORKSPACE.md#atrust-授信设备管理)
-- **随时查看官方资源页**。主界面提供独立的「打开资源页」按钮，已连接时复用当前线路的会话，自动恢复连接后也能打开。手动浏览器认证成功后仍可在同一窗口进入资源页，关闭页面不会断开 VPN。
+- **按需查看官方资源页**。已有会话时，点「连接」就能直接使用 VPN。需要网页登录时，认证成功后在原标签页进入官方资源页。已连接时也可以点「打开资源页」，关掉页面后 VPN 继续运行。
 - **内网分流和本机代理**。Windows 为开启 TUN 的配置分配独立虚拟网卡，按网关路由访问内网。遇到虚拟 IP、下发网段或 DNS 劫持冲突时，会阻止新连接并显示原因。关闭 TUN 后可使用该配置的 HTTP 或 SOCKS5 代理。 [高级使用方式](docs/ADVANCED_USAGE.md)
 
 官方 aTrust 的持久免登录令牌恢复仍在核对，目前的浏览器会话复用不等同于“授信后重启一定免认证”。[原生免登录核对记录](docs/ATRUST_RESTORE.md)
@@ -87,6 +87,8 @@ cmake --build build/windows-x64 --parallel
 ```
 
 本机已有工具和依赖集中保存在 `D:\Agant\toolchain\EZ4Connectpro`。可运行 `.\scripts\build-windows.ps1 -Test -Package`，复用工具离线构建、在独立 Windows 桌面验证并输出单文件。工具目录可通过 `-ToolsRoot`、`-SdkRoot`、`-GoModules` 指定。该脚本不自动下载缺失依赖。
+
+正式本地发布运行 `.\scripts\build-windows.ps1 -Release`。北京时间当天首次正式交付时，第三段版本号加一，满 9 时向第二段进位，例如 `2.1.9 → 2.2.0`。同日重打沿用当天版本，交付通过校验后才记录版本和日期。 [项目版本记录](version.json)
 
 完成交付后，可用 `.\scripts\clean-workspace.ps1` 预览可重建产物，核对后加 `-Apply` 清理。保留 `out` 最新单文件、源码、测试和脚本，共享工具与离线依赖不在清理范围内。
 

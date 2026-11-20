@@ -87,7 +87,7 @@ ProfileConnection *MainWindowCoordinator::createConnection(const VpnProfile &pro
         {
             systemProxySession->releaseFor(runtime->settings->fileName());
         }
-        else auth->openResources();
+        else auth->openResourcesInLoginBrowser();
         if (state == ConnectionState::Stopping || state == ConnectionState::Reconnecting)
         {
             auth->dismissSsoLogin();

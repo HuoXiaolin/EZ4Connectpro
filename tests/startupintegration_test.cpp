@@ -30,6 +30,8 @@
 #include "application/applicationconstants.h"
 #include "application/applicationlogger.h"
 #include "application/commandlineoptions.h"
+#include "infrastructure/browser/browserssosession.h"
+#include "infrastructure/browser/temporarybrowserssosession.h"
 #include "infrastructure/logging/applicationlogfile.h"
 #include "infrastructure/platform/autostart.h"
 #include "infrastructure/platform/privileges.h"
@@ -53,8 +55,9 @@ class ResourceUrlProbe : public QObject
     Q_OBJECT
 public:
     QUrl url;
+    int count = 0;
 public slots:
-    void open(const QUrl &value) { url = value; }
+    void open(const QUrl &value) { url = value; ++count; }
 };
 
 // Exercise the real startup UI and connection coordinator without touching UAC or Run.
@@ -94,7 +97,10 @@ int main(int argc, char **argv)
     scenario = CommandLineOptions::value(app.arguments(), "--scenario");
     if (scenario == "signature") qputenv("EZ4_QA_SIGNATURE_FAILURE", "1");
     ResourceUrlProbe resourceUrls;
-    if (scenario == "resources")
+    const bool temporaryPortal = scenario == "manual-portal-temporary";
+    const bool manualPortal = scenario == "manual-portal" || temporaryPortal;
+    const bool testResourcePage = scenario == "resources" || manualPortal;
+    if (testResourcePage)
     {
         QDesktopServices::setUrlHandler("http", &resourceUrls, "open");
         QDesktopServices::setUrlHandler("https", &resourceUrls, "open");
@@ -118,9 +124,9 @@ int main(int argc, char **argv)
         settings.setValue("Common/ConnectAfterStart", true);
         settings.setValue("Profile/DisplayName", QStringList{"办公线路", "备用线路", "手动线路", "测试线路"}[index]);
         settings.setValue("ZJUConnect/Protocol", "atrust");
-        if (scenario == "resources") settings.setValue(ApplicationConstants::SsoBrowserModeKey, "system");
-        settings.setValue("ZJUConnect/AuthType", "psw");
-        settings.setValue("ZJUConnect/ServerAddress", "office.example");
+        if (testResourcePage) settings.setValue(ApplicationConstants::SsoBrowserModeKey, temporaryPortal ? "temporary" : "system");
+        settings.setValue("ZJUConnect/AuthType", manualPortal ? "cas" : "psw");
+        settings.setValue("ZJUConnect/ServerAddress", manualPortal ? "127.0.0.1" : "office.example");
         settings.setValue("ZJUConnect/ServerPort", 443);
         settings.setValue("ZJUConnect/TunEnabled", index == 0 && (scenario == "elevate" || scenario == "denied"));
         const int bindIndex = scenario == "conflict" && index == 1 ? 0 : index * 2;
@@ -148,6 +154,14 @@ int main(int argc, char **argv)
         return runtime && runtime->session->isHttpProxyReady();
     };
     bool verified = false;
+    if (manualPortal)
+    {
+        QFile cache(ApplicationPaths::clientDataFile("manual", true));
+        if (!cache.open(QIODevice::WriteOnly)) return 2;
+        cache.write(R"({"cookies":[{"scheme":"https","host":"127.0.0.1:443","name":"sid","value":"resource-fixture"}]})");
+        cache.close();
+        QTimer::singleShot(0, window.findChild<QPushButton *>("pushButton1"), &QPushButton::click);
+    }
     int conflictDialogs = 0;
     int signatureDialogs = 0;
     int cleanShutdowns = 0;
@@ -180,6 +194,29 @@ int main(int argc, char **argv)
             return;
         }
         if (scenario == "ui" || scenario == "elevate") return;
+        if (manualPortal)
+        {
+            if (!ready("manual")) return;
+            const auto *runtime = coordinator->connectionFor(storage.profilePath("manual"));
+            const auto *browser = runtime->findChild<TemporaryBrowserSsoSession *>();
+            const auto *bridge = runtime->findChild<BrowserSsoSession *>();
+            if (resourceUrls.count || !browser || browser->isActive() || !bridge || !bridge->entryUrl().isEmpty())
+                qFatal("A connection without browser authentication opened a resource page");
+            const auto *core = runtime->session->findChild<QProcess *>();
+            if (!core || !core->processId()) qFatal("Manual connection core missing");
+            auto *button = window.findChild<QPushButton *>("resourcePageButton");
+            if (!button || !button->isEnabled()) qFatal("Connected resource action unavailable");
+            if (!temporaryPortal)
+            {
+                const auto pid = core->processId();
+                button->click();
+                if (resourceUrls.count != 1 || resourceUrls.url != bridge->entryUrl() || resourceUrls.url.host() != "127.0.0.1"
+                    || core->processId() != pid || !ready("manual")) qFatal("Explicit portal request did not use the active connection");
+            }
+            verified = true;
+            coordinator->stopConnections();
+            return;
+        }
         if (scenario == "signature")
         {
             const auto *runtime = coordinator->connectionFor(storage.profilePath({}));
@@ -214,6 +251,7 @@ int main(int argc, char **argv)
         verified = true;
         if (scenario == "resources")
         {
+            if (resourceUrls.count) qFatal("Background connections unexpectedly opened a browser");
             auto *button = window.findChild<QPushButton *>("resourcePageButton");
             auto *list = window.findChild<QListWidget *>("profileList");
             if (!button || !list || button->isEnabled()) qFatal("Disconnected resource action should be disabled");

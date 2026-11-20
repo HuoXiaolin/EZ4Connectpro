@@ -58,11 +58,14 @@ BrowserSsoSession::BrowserSsoSession(QObject *parent) : QObject(parent)
     server.setMaxPendingConnections(16);
     timeout.setSingleShot(true);
     connect(&server, &QTcpServer::newConnection, this, &BrowserSsoSession::acceptClient);
-    connect(&timeout, &QTimer::timeout, this, [this]()
-    {
-        fail(resourceOnly ? QStringLiteral("资源页打开超时。请确认回传扩展已更新并启用，再点击打开资源页。")
-                          : QStringLiteral("浏览器登录已超时。请确认回传扩展已在当前浏览器配置中启用，再重新连接。"));
-    });
+    connect(&timeout, &QTimer::timeout, this, &BrowserSsoSession::handleTimeout);
+}
+
+void BrowserSsoSession::handleTimeout()
+{
+    if (!server.isListening()) return;
+    if (callbackDelivered) cancel(); // A closed portal tab may never fetch the prepared session.
+    else fail(QStringLiteral("浏览器登录已超时。请确认回传扩展已在当前浏览器配置中启用，再重新连接。"));
 }
 
 bool BrowserSsoSession::isCallback(const QByteArray &rawUrl, const QUrl &server)

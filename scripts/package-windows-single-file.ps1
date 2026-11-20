@@ -1,7 +1,8 @@
 param(
     [string]$BuildDir = "build",
     [string]$CoreArchive,
-    [string]$OutputFile = "out/EZ4Connectpro-windows-x64.exe"
+    [string]$OutputFile = "out/EZ4Connectpro-windows-x64.exe",
+    [string]$ExpectedVersion
 )
 
 $ErrorActionPreference = "Stop"
@@ -58,6 +59,16 @@ try {
         Pop-Location
     }
 
+    if ($ExpectedVersion) {
+        foreach ($exe in @("$runtime/EZ4Connectpro.exe", "$runtime/zju-connect.exe", "$work/portable.exe")) {
+            $info = (Get-Item -LiteralPath $exe).VersionInfo
+            $numeric = "$($info.FileMajorPart).$($info.FileMinorPart).$($info.FileBuildPart).$($info.FilePrivatePart)"
+            if ($info.ProductVersion -cne $ExpectedVersion -or $info.FileVersion -cne $ExpectedVersion -or
+                $numeric -cne "$ExpectedVersion.0") {
+                throw "Unexpected version in $exe. Expected $ExpectedVersion."
+            }
+        }
+    }
     New-Item -ItemType Directory -Path (Split-Path -Parent $output) -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $work "portable.exe") -Destination $output -Force
     Get-Item -LiteralPath $output | Select-Object FullName, Length

@@ -56,7 +56,7 @@ private:
     void refreshProfileList();
     void editSelectedProfile();
     void startSelectedProfile();
-    void startProfile(const VpnProfile &profile);
+    void startProfile(const VpnProfile &profile, bool userInitiated);
     void startStartupProfiles(const QStringList &profileIds);
     ProfileConnection *selectedConnection() const;
     bool selectedConnectionIsActive() const;

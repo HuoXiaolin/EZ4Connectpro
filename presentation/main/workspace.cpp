@@ -385,10 +385,10 @@ void MainWindow::editSelectedProfile()
 
 void MainWindow::startSelectedProfile()
 {
-    startProfile(profileService->currentVpnProfile());
+    startProfile(profileService->currentVpnProfile(), true);
 }
 
-void MainWindow::startProfile(const VpnProfile &profile)
+void MainWindow::startProfile(const VpnProfile &profile, bool userInitiated)
 {
     if (!profile.isSupported())
     {
@@ -440,6 +440,7 @@ void MainWindow::startProfile(const VpnProfile &profile)
     }
     if (!runtime->session->isActive())
     {
+        runtime->auth->setShowLoginBrowserImmediately(userInitiated && profile.protocolId == "atrust");
         settings->sync();
         runtime->settings->sync();
     }

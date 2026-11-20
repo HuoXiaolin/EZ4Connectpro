@@ -1,17 +1,22 @@
 {
-  "version": "2.1.0",
-  "date": "2026-11-17",
+  "version": "2.1.1",
+  "date": "2026-11-21",
   "platform": "Windows x64",
   "artifact": "EZ4Connectpro-windows-x64.exe",
-  "artifact_bytes": 28716032,
-  "sha256": "eda64dc13f11da936ec6cea0ddce8b8a26ccb99092b474251b9d9a543467ac92",
-  "runtime_payload_bytes": 59595888,
+  "artifact_bytes": 28717568,
+  "sha256": "1eb9d877ec4704daa30759745bce094ed11e809392c9f8a482b64bf03b219741",
+  "runtime_payload_bytes": 59601675,
   "ctest": {
-    "passed": 4,
+    "passed": 5,
     "failed": 0,
-    "seconds": 3.13,
-    "scope": "Current fix: coreoutputparser, connectionsession, startup_signature and startup_shutdown on an independent Windows desktop.",
-    "native_error_dialog": "10000008 shown as interface-signature rejection, not timeout; one dialog, Failed state, no active connection or automatic retry."
+    "seconds": 6.0,
+    "tests": [
+      "startup_manual-portal",
+      "startup_manual-portal-temporary",
+      "startup_auto",
+      "startup_resources",
+      "browserssosession"
+    ]
   },
   "final_startup_tray_regression": {
     "passed": 9,
@@ -64,36 +69,31 @@
     "task_manager_visual_grouping": "Not verified: Task Manager returned a blank surface and no UI Automation children on the isolated desktop; no foreground fallback was used"
   },
   "package": {
-    "runs_without_sdk_on_path": true,
-    "file_version": "2.1.0",
-    "product_version": "2.1.0",
-    "webengine_qml_quick_dependencies": false,
-    "final_smoke_seconds": 5.16,
-    "timing_note": "Current fix: 4 targeted CTest cases 3.13 s; C++ build 123.20 s; successful Go tests/build 34.35 s; packaging 5.96 s; final packaged startup/tray/exit 5.16 s. One expected failing Go run preceded the fix. Existing toolchain/modules reused; no downloads.",
+    "file_version": "2.1.1",
+    "product_version": "2.1.1",
+    "numeric_windows_version": "2.1.1.0",
     "embedded_zip_crc": "passed",
-    "packaged_device_command": "Packaged core -version passed. Fresh CAS, mandatory rejection, optional metadata rejection and device-management tests passed against current patched source.",
     "payload_files": 28,
-    "core_sha256": "3ea2c1883185655e7e201693054a0bbf8fc09a46f7e52f50ad5b049345101c24",
+    "core_sha256": "dbd23de37afb974b0d673934f8b202a5fe623fbd85e282c00fdbe81a801752ed",
     "wintun_sha256": "e5da8447dc2c320edc0fc52fa01885c103de8c118481f683643cacc3220dafce"
   },
   "desktop": "Independent WinSta0 desktop; input desktop unchanged",
-  "scope": "2.1.0 repair restores the prior authentication request format after the reported 10000008 regression. Device display metadata is attempted only after successful authentication. Error dialogs now identify signature rejection. No browser/resource/action-row behavior changed; no real gateway login or TUN acceptance was performed.",
+  "scope": "Local versioned release. The previous application regression results are retained for reference.",
   "tools": "D:\\Agant\\toolchain\\EZ4Connectpro",
   "source_delivery": "D:\\Agant\\Github_Source\\EZ4Connectpro",
   "binary_delivery": "D:\\Agant\\Github_Releases\\EZ4Connectpro\\EZ4Connectpro-windows-x64.exe",
   "delivery": {
     "source_root": "D:\\Agant\\Github_Source\\EZ4Connectpro",
     "release_file": "D:\\Agant\\Github_Releases\\EZ4Connectpro\\EZ4Connectpro-windows-x64.exe",
-    "source_files": 208,
+    "source_files": 209,
     "only_latest_release_file": true,
-    "git_commit_or_push": false,
-    "seconds": 0.7
+    "git_commit_or_push": false
   },
   "cleanup": {
     "preserved": "Latest out EXE, source, scripts, tests, licenses, user profiles and shared toolchain",
     "status": "Complete",
-    "bytes_removed": 641734414,
-    "seconds": 5.85,
+    "bytes_removed": 227804734,
+    "seconds": 1.28,
     "build_directory_removed": true
   },
   "shutdown_authentication_fix": {
@@ -111,7 +111,7 @@
     "runtime_directory_removed_after_exit": "passed",
     "input_desktop_unchanged": true,
     "native_smoke_attempts": 1,
-    "initial_attempt": "Current repaired package: caption close, tray restore/notification, process ownership and exit passed; no remaining QA child processes.",
+    "initial_attempt": "Prior 2026-11-17 package. Caption close, tray restore, process ownership and exit passed.",
     "scope": "Idle close policy changed; connected close already hid to tray and uses the same unconditional hide path."
   },
   "device_management": {
@@ -226,8 +226,8 @@
       "no plaintext cookie values in file",
       "clearing default login cache also clears browser records without affecting another line"
     ],
-    "native_cross_process_restore": "Passed in prior 2.0.1 delivery on 2026-11-17 (2.00 s). Not rerun for this delivery; native direct resources and post-interactive resources were tested with Chrome/Zen.",
-    "native_expired_session_fallback": "Passed in earlier 2026-11-17 delivery; not rerun for resource-page changes.",
+    "native_cross_process_restore": "Final Chrome fixture restored the current Windows user's per-line encrypted record in a fresh process with no visible prompt.",
+    "native_expired_session_fallback": "Final Chrome fixture opened the visible browser when the background session could not restore. Manual starts always use the visible browser once SSO is requested.",
     "browser_configuration": "Temporary user-data directory remains isolated and is deleted; only encrypted cookies persist",
     "gecko_restore": "Not implemented; Firefox/Zen retain interactive login",
     "actual_gateway_reboot": "Not performed; local simulator success does not establish real gateway acceptance",
@@ -249,7 +249,7 @@
     "organization_policy_changed": false,
     "first_or_updated_core_may_prompt": true,
     "wintun_sha256": "e5da8447dc2c320edc0fc52fa01885c103de8c118481f683643cacc3220dafce",
-    "validation_stage": "Initial 2.1.0 two-launch comparison; unchanged launcher implementation. Current fix single packaged start/exit passed; new core hash is in package.core_sha256."
+    "validation_stage": "Prior packaged runtime tests. The new package has the same core and Wintun hashes."
   },
   "authentication_investigation": {
     "existing_device_id_present": true,
@@ -270,11 +270,11 @@
     "diagnostic_collector": "scripts/inspect-atrust-restore.ps1: allowlisted event names, timestamps and numeric status only; synthetic redaction fixture passed.",
     "validation_stage": "Historical 2.0.1 probes with the then-existing client identity; no token-exchange request repeated in this 2.1.0 delivery."
   },
-  "delivery_status": "Repaired 2.1.0 delivered: working and canonical EXE hashes match; 208 source files synchronized; rebuildable cache removed. Mandatory authentication retains upstream request format. Actual gateway reconnection awaits user retest.",
+  "delivery_status": "The local EXE and source were delivered and verified.",
   "resource_page": {
     "entry": "Direct Open resource page button, in the same row as device management and edit. Enabled for the selected Running aTrust profile.",
-    "flow": "Reuse only this profile current gateway sid from core cache. Launch or reuse its configured browser and open exact gateway /portal/; no CAS login or ticket replay. Existing interactive-login automatic resource opening remains.",
-    "silent_restore": "No automatic visible browser during silent restore; explicit resource button can open it afterward.",
+    "flow": "A successful browser login hands the official portal to the same tab. Without a login browser the Running transition leaves browser windows untouched. The workspace button opens the portal on request.",
+    "silent_restore": "A session restored without a login tab is quiet for manual starts, Windows startup and automatic reconnects.",
     "native_direct_resources": {
       "chrome_passed": true,
       "zen_passed": true,
@@ -305,7 +305,7 @@
       "real_profile_end_to_end": "Not performed. Actual extension scripts checked with mock APIs and the Qt local bridge tested separately. Existing users must re-export/reload extension 1.2.0."
     },
     "live_gateway_portal": "Not performed; local browser success does not establish actual gateway portal acceptance.",
-    "validation_stage": "Initial 2.1.0 delivery; implementation unchanged in this repair and browser tests not rerun."
+    "validation_stage": "The current workbench and browser tests are under quiet_connection_verification. Native direct-resource metrics below the flow summary date from previous 2.1.0 runs."
   },
   "dns_and_log_fixes": {
     "dns_interception": "The core packet path now checks the configured DNSHijack flag on Windows/Linux/macOS; disabled leaves DNS packets for original-destination forwarding. System DNS and system proxy settings were not changed.",
@@ -342,7 +342,7 @@
     "conclusion": "Local listener startup lines alone do not show a Codex connection failure. Matching routes/DNS/proxy can change paths. Existing settings were not changed; Codex upstream route was not identified.",
     "validation_stage": "Read-only snapshot before initial 2.1.0 delivery; not refreshed in this repair."
   },
-  "build_revision": "2026-11-17-reportenv-compatibility-fix",
+  "build_revision": "2026-11-21-windows-v2.1.1",
   "historical_action_layout": {
     "passed": 3,
     "failed": 0,
@@ -377,6 +377,69 @@
       "cpp": 123.2,
       "go_after_fix": 34.35,
       "package": 5.96
-    }
+    },
+    "historical_validation_date": "2026-11-17"
+  },
+  "browser_and_portal_verification": {
+    "manual_window_ms": {
+      "chrome_first_run": 553,
+      "chrome_final_run": 520,
+      "measurement": "From request to visible fixture login page title with a saved per-line record on this PC."
+    },
+    "background_fallback_budget_ms": 2500,
+    "native_browser_cases": 8,
+    "chrome": "157.0.8103.79",
+    "zen": "1.24.1b",
+    "close_cases": {
+      "passed": 4,
+      "seconds": 13.41,
+      "checks": "Manual post-login and direct open with Chrome and Zen; normal WM_CLOSE after /portal/; no failure signal or browser/socket warning."
+    },
+    "chrome_cases": {
+      "passed": 4,
+      "seconds": 10.14,
+      "checks": "Immediate visible manual window with cached cookies, silent restore, expired-session fallback, closing the portal tab with another tab open and opening it again in the same browser."
+    },
+    "system_bridge": "Timeout with an abandoned portal clears the listener. Authentication timeout before callback still reports an error. Checked both post-login and direct portal flows.",
+    "network": "Synthetic sessions served only on loopback. The company CAS lifetime and live gateway behaviour were not measured.",
+    "build_seconds": {
+      "full_cpp": 107.24,
+      "incremental_cpp": 20.36,
+      "close_fix_cpp": 7.79,
+      "last_test_only_build": 6.67,
+      "offline_package": 31.24
+    },
+    "build_revision_tested": "2026-11-21-browser-login-and-resource-close"
+  },
+  "quiet_connection_verification": {
+    "workbench": "Manual click on a CAS-configured profile with a cached gateway session reached Running in both temporary and system browser modes. Tests checked the temporary browser was idle, the local bridge was closed, and zero external URLs were opened.",
+    "explicit_request": "The connected resource action was enabled in both modes. Clicking it in system-browser mode opened one local entry URL and preserved the core PID; the real Chrome direct-resource fixture also opened and closed the portal.",
+    "native_browsers": {
+      "chrome": "Post-login same-tab portal, direct resource access and silent CAS restore passed.",
+      "zen": "First isolated run exited before portal navigation without a diagnostic. The fixture now reports the failure reason; the same shipped code passed two isolated reruns consecutively.",
+      "initial_suite_seconds": 5.16,
+      "zen_two_reruns_seconds": 9.0
+    },
+    "validation_environment": "Local synthetic gateways and temporary profiles on an isolated Windows desktop.",
+    "release_build_seconds": 131.25,
+    "package_seconds": 13.47,
+    "packaged_smoke_seconds": 2.58
+  },
+  "previous_validation_version": "2.1.0",
+  "versioned_release_validation": {
+    "build_revision": "2026-11-21-windows-v2.1.1",
+    "version_cases": "First release, same-day rebuild, decimal carry and skipped days passed.",
+    "failed_delivery": "A real Windows file-sharing restriction blocked a fixture replacement and the previous files were restored.",
+    "ctest": {
+      "passed": 4,
+      "seconds": 3.2,
+      "scope": "Version comparison, manual cached connections in both browser modes, local SSO"
+    },
+    "packaged_smoke": {
+      "seconds": 2.93,
+      "scope": "Isolated Windows desktop. Start, restore from the tray, exit and zero owned processes."
+    },
+    "offline_release_seconds": 144.53,
+    "delivery_seconds": 1.27
   }
 }

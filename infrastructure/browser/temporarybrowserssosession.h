@@ -18,13 +18,17 @@ class TemporaryBrowserSsoSession : public QObject
     Q_OBJECT
 
 public:
+    enum class LaunchMode { ShowWindow, RestoreInBackground };
+
     explicit TemporaryBrowserSsoSession(QObject *parent = nullptr);
     ~TemporaryBrowserSsoSession() override;
 
-    void start(const QUrl &loginUrl, const QUrl &gateway, const QString &browser = {}, const QString &loginCache = {}, bool keepForResources = false);
+    void start(const QUrl &loginUrl, const QUrl &gateway, const QString &browser = {}, const QString &loginCache = {},
+               bool keepForResources = false, LaunchMode mode = LaunchMode::RestoreInBackground);
     void openResources(const QString &clientDataFile);
     void startResources(const QUrl &gateway, const QString &clientDataFile, const QString &browser = {});
     bool isActive() const { return active; }
+    bool hasResourceTab() const { return active && callbackDelivered && !resourceTabClosed; }
     void cancel();
 
 signals:
@@ -41,6 +45,7 @@ private:
     void findChromiumEndpoint();
     void openEndpoint(const QString &host, int port, const QString &path);
     void findLoginPage();
+    void attachChromiumPage(const QString &target);
     void enableInterception();
     void navigate();
     void restoreCookiesAndNavigate();
@@ -52,6 +57,8 @@ private:
     void send(const QString &method, const QJsonObject &params = {}, Reply reply = {}, bool required = true);
     void handleMessage(const QString &message);
     void handleRequest(const QJsonObject &event);
+    void resourceTabWasClosed();
+    void browserClosed(const QString &loginError);
     void fail(const QString &message);
 
     std::unique_ptr<QTemporaryDir> profile;
@@ -80,7 +87,8 @@ private:
     bool silent = false;
     bool keepForResources = false;
     bool callbackDelivered = false;
-    bool resourcePageOpened = false;
+    bool resourceTabClosed = false;
+    bool portalOpened = false;
     bool resourceOnly = false;
 };
 

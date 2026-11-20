@@ -37,7 +37,8 @@ public:
     void requestRadiusCode(bool showSkipSecondaryAuthOption);
     void requestSsoLogin(const QString &loginUrl);
     void dismissSsoLogin();
-    void openResources();
+    void setShowLoginBrowserImmediately(bool enabled) { showLoginBrowserImmediately = enabled; }
+    void openResourcesInLoginBrowser();
     void openResourcePage();
 
 signals:
@@ -61,10 +62,11 @@ private:
     QPointer<SudoWindow> sudoWindow;
     QPointer<GraphCaptchaWindow> graphCaptchaWindow;
     QPointer<QDialog> ssoLoginDialog;
-    QPointer<TemporaryBrowserSsoSession> pendingResourceBrowser;
-    QPointer<BrowserSsoSession> pendingResourceBridge;
-    QPointer<TemporaryBrowserSsoSession> resourceBrowser;
-    QPointer<BrowserSsoSession> resourceBridge;
+    enum class LoginBrowser { None, Temporary, System };
+    LoginBrowser loginBrowser = LoginBrowser::None;
+    bool showLoginBrowserImmediately = false;
+    TemporaryBrowserSsoSession *resourceBrowser;
+    BrowserSsoSession *resourceBridge;
 };
 
 #endif // AUTHDIALOGCOORDINATOR_H

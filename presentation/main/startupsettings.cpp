@@ -207,7 +207,7 @@ void MainWindow::startStartupProfiles(const QStringList &profileIds)
         QTimer::singleShot(0, this, [this, profile]()
         {
             const auto *runtime = coordinator->connectionFor(profile.settingsPath);
-            if (!quitting && (!runtime || !runtime->session->isActive())) startProfile(profile);
+            if (!quitting && (!runtime || !runtime->session->isActive())) startProfile(profile, false);
         });
     }
 }

@@ -21,6 +21,7 @@
 #include <QUrlQuery>
 #include <QVBoxLayout>
 #include <QWidget>
+#include <utility>
 
 #include "application/applicationconstants.h"
 #include "infrastructure/browser/browserssosession.h"
@@ -39,8 +40,16 @@ AuthDialogCoordinator::AuthDialogCoordinator(
     : QObject(parent),
       parentWidget(parentWidget),
       settings(settings),
-      profileId(profileId)
+      profileId(profileId),
+      resourceBrowser(new TemporaryBrowserSsoSession(this)),
+      resourceBridge(new BrowserSsoSession(this))
 {
+    const auto resourceError = [this](const QString &message)
+    {
+        if (!ssoLoginDialog) QMessageBox::warning(this->parentWidget, dialogTitle("打开资源页"), message);
+    };
+    connect(resourceBrowser, &TemporaryBrowserSsoSession::failed, this, resourceError);
+    connect(resourceBridge, &BrowserSsoSession::failed, this, resourceError);
 }
 
 QString AuthDialogCoordinator::dialogTitle(const QString &title) const
@@ -394,10 +403,8 @@ void AuthDialogCoordinator::requestSsoLogin(const QString &coreLoginUrl)
     buttons->button(QDialogButtonBox::Cancel)->setText("取消");
     layout->addWidget(buttons);
     connect(buttons, &QDialogButtonBox::rejected, dialog, &QDialog::reject);
-    auto *browser = new BrowserSsoSession(this);
-    auto *temporary = new TemporaryBrowserSsoSession(this);
-    pendingResourceBridge = browser;
-    pendingResourceBrowser = temporary;
+    auto *browser = resourceBridge;
+    auto *temporary = resourceBrowser;
     connect(dialog, &QDialog::rejected, browser, &BrowserSsoSession::cancel);
     connect(dialog, &QDialog::rejected, temporary, &TemporaryBrowserSsoSession::cancel);
     connect(dialog, &QDialog::finished, this, [this](int result)
@@ -414,10 +421,8 @@ void AuthDialogCoordinator::requestSsoLogin(const QString &coreLoginUrl)
         dialog->accept();
         emit interactiveInputSubmitted(url + '\n');
     };
-    connect(browser, &BrowserSsoSession::callbackReceived, dialog, [this, browser, complete](const QByteArray &url)
-    { pendingResourceBridge = browser; complete(url); });
-    connect(temporary, &TemporaryBrowserSsoSession::callbackReceived, dialog, [this, temporary, complete](const QByteArray &url)
-    { pendingResourceBrowser = temporary; complete(url); });
+    connect(browser, &BrowserSsoSession::callbackReceived, dialog, complete);
+    connect(temporary, &TemporaryBrowserSsoSession::callbackReceived, dialog, complete);
     connect(browser, &BrowserSsoSession::failed, status, &QLabel::setText);
     connect(temporary, &TemporaryBrowserSsoSession::failed, dialog, [dialog, status](const QString &message)
     {
@@ -431,21 +436,23 @@ void AuthDialogCoordinator::requestSsoLogin(const QString &coreLoginUrl)
     });
     connect(temporary, &TemporaryBrowserSsoSession::interactionRequired, dialog, [dialog, status]()
     {
-        status->setText("请在临时浏览器窗口中完成登录。Chrome / Edge 会加密保存本线路的登录记录，下次先尝试自动恢复。");
+        status->setText("正在打开临时浏览器。已有登录记录可用时会自动继续，需要验证时请在网页中完成。");
         dialog->show();
     });
 
     const QUrl loginUrl = QUrl::fromUserInput(ssoUrl);
     const QString loginCache = ApplicationPaths::browserLoginDataFile(profileId);
-    const auto openLogin = [browser, temporary, dialog, mode, status, copyLink, exportExtension, loginUrl, serverUrl, loginCache]()
+    using LaunchMode = TemporaryBrowserSsoSession::LaunchMode;
+    const auto openLogin = [this, browser, temporary, dialog, mode, status, copyLink, exportExtension, loginUrl, serverUrl, loginCache](LaunchMode launch)
     {
         const bool system = mode->currentData().toString() == "system";
+        loginBrowser = system ? LoginBrowser::System : LoginBrowser::Temporary;
         copyLink->setVisible(system);
         exportExtension->setVisible(system);
         if (!system)
         {
             browser->cancel();
-            temporary->start(loginUrl, serverUrl, {}, loginCache, true);
+            temporary->start(loginUrl, serverUrl, {}, loginCache, true, launch);
             return;
         }
         temporary->cancel();
@@ -457,8 +464,9 @@ void AuthDialogCoordinator::requestSsoLogin(const QString &coreLoginUrl)
             status->setText("无法打开系统默认浏览器。可以复制链接后手动打开。");
         }
     };
-    connect(mode, &QComboBox::currentIndexChanged, dialog, openLogin);
-    connect(openAgain, &QPushButton::clicked, dialog, openLogin);
+    const auto openVisible = [openLogin]() { openLogin(LaunchMode::ShowWindow); };
+    connect(mode, &QComboBox::currentIndexChanged, dialog, openVisible);
+    connect(openAgain, &QPushButton::clicked, dialog, openVisible);
     connect(copyLink, &QPushButton::clicked, dialog, [browser, status]()
     {
         const QUrl entry = browser->entryUrl();
@@ -487,32 +495,29 @@ void AuthDialogCoordinator::requestSsoLogin(const QString &coreLoginUrl)
         status->setText("扩展目录已复制。请在常用浏览器的扩展页加载，再刷新登录标签页。");
     });
     qInfo().noquote() << "已请求浏览器单点登录";
-    openLogin();
+    openLogin(showLoginBrowserImmediately ? LaunchMode::ShowWindow : LaunchMode::RestoreInBackground);
 }
 
 void AuthDialogCoordinator::dismissSsoLogin()
 {
-    if (pendingResourceBrowser) pendingResourceBrowser->cancel();
-    if (pendingResourceBridge) pendingResourceBridge->cancel();
-    pendingResourceBrowser.clear();
-    pendingResourceBridge.clear();
+    showLoginBrowserImmediately = false;
+    const auto pending = std::exchange(loginBrowser, LoginBrowser::None);
+    if (pending == LoginBrowser::Temporary) resourceBrowser->cancel();
+    if (pending == LoginBrowser::System) resourceBridge->cancel();
     if (ssoLoginDialog != nullptr)
     {
         ssoLoginDialog->accept();
     }
 }
 
-void AuthDialogCoordinator::openResources()
+void AuthDialogCoordinator::openResourcesInLoginBrowser()
 {
+    showLoginBrowserImmediately = false;
+    const auto pending = std::exchange(loginBrowser, LoginBrowser::None);
+    if (pending == LoginBrowser::None) return;
     const QString file = ApplicationPaths::clientDataFile(profileId, false);
-    if (pendingResourceBrowser)
-    {
-        pendingResourceBrowser->openResources(file);
-        if (pendingResourceBrowser->isActive()) resourceBrowser = pendingResourceBrowser;
-    }
-    if (pendingResourceBridge) pendingResourceBridge->openResources(file);
-    pendingResourceBrowser.clear();
-    pendingResourceBridge.clear();
+    if (pending == LoginBrowser::System) resourceBridge->openResources(file);
+    else if (resourceBrowser->hasResourceTab()) resourceBrowser->openResources(file);
 }
 
 void AuthDialogCoordinator::openResourcePage()
@@ -522,27 +527,15 @@ void AuthDialogCoordinator::openResourcePage()
     gateway.setHost(settings->value("ZJUConnect/ServerAddress").toString());
     gateway.setPort(settings->value("ZJUConnect/ServerPort", 443).toInt());
     const QString file = ApplicationPaths::clientDataFile(profileId, false);
-    const auto failed = [this](const QString &message)
-    { QMessageBox::warning(parentWidget, dialogTitle("打开资源页"), message); };
     if (settings->value(ApplicationConstants::SsoBrowserModeKey, "temporary").toString() == "system")
     {
-        if (!resourceBridge)
-        {
-            resourceBridge = new BrowserSsoSession(this);
-            connect(resourceBridge, &BrowserSsoSession::failed, this, failed);
-        }
         const QUrl url = resourceBridge->prepareResources(gateway, file);
         if (!url.isEmpty() && !QDesktopServices::openUrl(url))
         {
             resourceBridge->cancel();
-            failed("无法打开系统默认浏览器。请检查浏览器设置。");
+            QMessageBox::warning(parentWidget, dialogTitle("打开资源页"), "无法打开系统默认浏览器。请检查浏览器设置。");
         }
         return;
-    }
-    if (!resourceBrowser)
-    {
-        resourceBrowser = new TemporaryBrowserSsoSession(this);
-        connect(resourceBrowser, &TemporaryBrowserSsoSession::failed, this, failed);
     }
     if (resourceBrowser->isActive()) resourceBrowser->openResources(file);
     else resourceBrowser->startResources(gateway, file);
